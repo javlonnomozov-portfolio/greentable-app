@@ -55,6 +55,7 @@ When `--release` finishes it prints the release URL
 | `credentials.json` | repo root, **gitignored** | points EAS at the key above; contains the password |
 | gh CLI | `~/.local/gh/bin/gh.exe` | logged in as `javlonnomozov-portfolio`; the repo has a repo-local git credential helper for it |
 | Repo | `github.com/javlonnomozov-portfolio/greentable-app` (public), branch `master` | |
+| CPU architectures | `armeabi-v7a`, `arm64-v8a` only | EAS: `eas.json` → `build.base.env`; local: `-PreactNativeArchitectures`. x86 is emulator-only and doubles native compile time |
 | Local build: JDK 17 / SDK | `~/.jdks/jdk-17*`, `~/Android/Sdk`, cache `~/.gradle` | versions read from `node_modules/react-native/gradle/libs.versions.toml` |
 
 `dist/` (APKs, logs, release notes) and `android/` (regenerated from `app.json`) are gitignored and must stay out of git.

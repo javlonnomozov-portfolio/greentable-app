@@ -3,7 +3,13 @@
     "appVersionSource": "local"
   },
   "build": {
+    "base": {
+      "env": {
+        "ORG_GRADLE_PROJECT_reactNativeArchitectures": "armeabi-v7a,arm64-v8a"
+      }
+    },
     "preview": {
+      "extends": "base",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
@@ -11,6 +17,7 @@
       "credentialsSource": "local"
     },
     "production": {
+      "extends": "base",
       "credentialsSource": "local"
     }
   }
