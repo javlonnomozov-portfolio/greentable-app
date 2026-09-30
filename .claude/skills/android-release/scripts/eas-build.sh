@@ -86,10 +86,20 @@ done
 log "APK'ni yuklab olish"
 curl -fsSL -o "$APK_OUT" "$URL"
 ok "$APK_OUT ($(du -h "$APK_OUT" | cut -f1))"
-# Kalit to'g'riligini tekshirish (build-tools o'rnatilgan bo'lsa).
+# APK aynan bizning kalit bilan imzolanganini tekshirish (JDK va build-tools o'rnatilgan bo'lsa).
+# Boshqa kalit bilan imzolangan APK telefondagi ilovaning ustidan o'rnatilmaydi.
+JDK="$(ls -d "$HOMEW"/.jdks/jdk-17* 2>/dev/null | head -1 || true)"
 APKSIGNER="$(ls "$HOMEW"/Android/Sdk/build-tools/*/apksigner.bat 2>/dev/null | tail -1 || true)"
-if [ -n "$APKSIGNER" ]; then
-  "$APKSIGNER" verify --print-certs "$(W "$APK_OUT")" | grep -m1 "certificate SHA-256" || true
+if [ -n "$JDK" ] && [ -n "$APKSIGNER" ] && [ -f "$KEY_INFO" ]; then
+  PW="$(sed -n 's/^Parol (store va key): //p' "$KEY_INFO" | tr -d '\r')"
+  APK_SHA="$(JAVA_HOME="$JDK" "$APKSIGNER" verify --print-certs "$(W "$APK_OUT")" |
+    sed -n 's/.*certificate SHA-256 digest: //p' | head -1 | tr -d '\r')"
+  KEY_SHA="$("$JDK/bin/keytool.exe" -list -v -keystore "$KEYSTORE" -alias greentable -storepass "$PW" 2>/dev/null |
+    sed -n 's/.*SHA256: //p' | head -1 | tr -d ':\r' | tr 'A-F' 'a-f')"
+  [ -n "$APK_SHA" ] && [ "$APK_SHA" = "$KEY_SHA" ] || fail "APK imzosi kalitimizga mos emas ($APK_SHA ≠ $KEY_SHA)"
+  ok "imzo kalitimiz bilan mos ($APK_SHA)"
+else
+  printf '  – imzo tekshirilmadi (JDK yoki build-tools yo'"'"'q)\n'
 fi
 
 # ---------- Telefonga o'rnatish ----------
