@@ -1,16 +1,17 @@
 {
   "cli": {
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "credentialsSource": "local"
     },
     "production": {
-      "autoIncrement": true
+      "credentialsSource": "local"
     }
   }
 }

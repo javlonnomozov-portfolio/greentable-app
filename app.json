@@ -62,6 +62,13 @@
           "imageWidth": 260
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2397a3b4-cd33-4b28-af51-1c0ffc2cc5dd"
+      }
+    },
+    "owner": "javl9n"
   }
 }

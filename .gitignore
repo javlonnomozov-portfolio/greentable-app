@@ -44,3 +44,6 @@ yarn-error.*
 *.apk
 *.aab
 *.keystore
+
+# EAS mahalliy imzolash sozlamasi (parol bor)
+credentials.json
