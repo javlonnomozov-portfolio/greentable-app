@@ -1,41 +1,50 @@
 # GreenTable
 
 Biliardxona boshqaruv tizimi — bilyard zalini boshqarish va pul oqimini kuzatish uchun mobil ilova
-(Expo SDK 57, React Native, TypeScript).
-Internetsiz ishlaydi — barcha ma'lumotlar qurilmadagi SQLite bazasida saqlanadi.
+(Expo SDK 57, React Native, TypeScript) va uning serveri (oylik obuna, Telegram bot, admin panel).
+
+Ilova **oflayn ham ishlaydi**: ma'lumot telefondagi SQLite bazasida, internet bo'lganda server orqali biliardxonaning
+barcha qurilmalari bilan avtomatik sinxronlanadi.
 
 ## Imkoniyatlar
 
 - **Zal** — stollar gridi: bo'sh / band / pauza, jonli taymer va joriy summa. Seansni boshlash, pauza,
   boshqa stolga ko'chirish (eski vaqt eski narxda hisoblanadi), mahsulot qo'shish. Stollar soni erkin:
-  "Stol qo'shish" kartasi, sozlamalarda olib tashlash/qaytarish (tarixi saqlanadi).
+  "Stol qo'shish" kartasi, sozlamalarda olib tashlash/qaytarish (tarixi saqlanadi). Bo'sh biliardxonada — tez sozlash.
 - **Unutilgan seans** — boshlanish vaqtini boshlashda yoki keyin, tugash vaqtini to'lovda qo'lda kiritish
   ("15 daqiqa oldin" tugmalari yoki aniq soat, 24 soatgacha orqaga).
-- **Savdo** — stolsiz savdo: *tezkor savdo* (darhol to'lanadi) yoki *odam nomiga ochiq hisob*
-  (vaqt o'tishi bilan mahsulot qo'shiladi, keyin yopiladi).
-- **To'lov** — hisoblangan summa ko'rsatiladi, lekin admin yakuniy summani o'zgartira oladi (112 000 → 100 000
-  yoki 115 000); farq chekda va hisobotda chegirma/ustama bo'lib chiqadi. Naqd / karta / o'tkazma aralash,
-  qaytim, qolgan summani qarzga yozish.
-- **Qarz daftari** — mijozlar, balans, qarz tarixi, qarzni to'lash, qo'lda qarz yozish.
-- **Kassa (hisobot)** — kun / hafta / oy: tushum (stol vaqti, stoldagi bar, stolsiz savdo), kassa bo'yicha
-  kirim-chiqim, xarajatlar, qarzlar, sof foyda, kunlik grafik, stollar va top mahsulotlar, cheklar ro'yxati.
-- **Xarajatlar** — turlari bo'yicha; ombor kirimi xarid summasi bilan avtomatik xarajatga yoziladi.
-- **Sozlamalar** — stollar va soatlik narx, mahsulotlar va ombor, yaxlitlash (qadam va yo'nalish),
-  ish kuni boshlanish soati, klub nomi, egasi PIN kodi, zaxira va almashish, tarixni tozalash.
-- **Ikki telefon** — egasi va sherigi kunma-kun ishlaydi: kun (hafta, oy yoki butun tarix) uchun zaxira fayli
-  olinadi, Telegram orqali yuboriladi va ikkinchi telefonda **birlashtiriladi** (hech narsa o'chmaydi,
-  qayta import takrorlamaydi, bekor qilingan chek va to'langan qarz ham o'tadi).
-- **Chek** — ekranda ko'rsatiladi va rasm sifatida ulashiladi (printer talab qilinmaydi).
+- **Savdo** — stolsiz savdo: *tezkor savdo* (darhol to'lanadi) yoki *odam nomiga ochiq hisob*.
+- **To'lov** — hisoblangan summa ko'rsatiladi, admin yakuniy summani o'zgartira oladi; farq chegirma/ustama
+  bo'lib chiqadi. Naqd / karta / o'tkazma aralash, qaytim, qolgan summani qarzga yozish.
+- **Qarz daftari**, **Kassa (hisobot)**, **Xarajatlar**, **Chek** (rasm sifatida ulashiladi).
+- **Bir nechta qurilma** — egasi va sheriklari bitta biliardxonada ishlaydi: o'zgarishlar 15 soniya ichida
+  boshqa telefonlarda ko'rinadi (ochiq stollar ham).
+- **Obuna** — biliardxona uchun oylik to'lov, birinchi marta bepul sinov; muddat tugasa imtiyoz kunlari, keyin
+  faqat ko'rish rejimi (ma'lumot yo'qolmaydi). Kirish, to'lov cheki va promo kod — Telegram bot orqali.
 
-## Ishga tushirish
+## Tuzilma
+
+```
+src/                ilova (Expo Router)
+  app/              ekranlar: (tabs)/ Zal, Savdo, Qarzlar, Kassa, Sozlamalar; login, settings/account, ...
+  components/       UI: SyncProvider (kirish va sinxron holati), SubscriptionStatus, QuickSetup, ...
+  db/               SQLite sxema/migratsiyalar (3-migratsiya: sinxron triggerlari), useQuery
+  services/         biznes mantiq (testlanadi)
+  sync/             server bilan sinxron: codec, apply, engine, api, session
+server/             server (Railway)
+  src/              Hono API, grammY bot, Drizzle sxema, obuna/chegirma/sinxron servislari
+  admin/            admin panel (Vite + React + Mantine), /admin da
+  drizzle/          Postgres migratsiyalari (drizzle-kit generate)
+  test/             vitest + PGlite (xotiradagi Postgres)
+__tests__/          ilova testlari (jest + node:sqlite); test/fakeServer.ts — server sinxron mantiqining nusxasi
+```
+
+## Ilovani ishga tushirish
 
 ```sh
 npm install
 npx expo start
 ```
-
-Telefonga **Expo Go** ilovasini o'rnating (SDK 57 ni qo'llab-quvvatlaydigan versiya) va terminaldagi QR kodni skanerlang.
-Telefon va kompyuter bitta Wi-Fi tarmog'ida bo'lishi kerak.
 
 USB orqali (Wi-Fi'siz), Git Bash'da:
 
@@ -45,96 +54,76 @@ adb reverse tcp:8081 tcp:8081
 adb shell am start -a android.intent.action.VIEW -d "exp://127.0.0.1:8081" host.exp.exponent
 ```
 
-`NODE_OPTIONS` shart: Windows'da Metro aks holda faqat IPv6 (`::1`) da tinglaydi, `adb reverse` esa IPv4 ga ulanadi.
+Server manzili `EXPO_PUBLIC_API_URL` (`.env` yoki `eas.json` → `build.base.env`); bo'lmasa Railway'dagi asosiy server.
+
+## Server
+
+```sh
+cd server
+npm install
+npm test                      # vitest: obuna, chegirma, kirish, sinxron, HTTP
+npm run typecheck
+npm run build                 # admin panel → dist/admin
+npm run dev                   # lokal: PGlite (.data/pg), BOT_TOKEN bo'lsa bot polling rejimida
+node scripts/dev-seed.ts      # lokal namunaviy ma'lumot + admin sessiya tokeni
+npm run db:generate           # sxema o'zgarsa yangi migratsiya
+```
+
+Node 24+ (TypeScript fayllar to'g'ridan-to'g'ri ishlaydi, build kerak emas — faqat admin panel yig'iladi).
+
+**Railway** (`greentable` loyihasi): `server` servisi + Postgres. Deploy: `cd server && railway up`.
+O'zgaruvchilar:
+
+| Nomi | Ma'nosi |
+|---|---|
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
+| `PUBLIC_URL` | serverning https manzili (webhook va panel havolalari) |
+| `BOT_TOKEN` | @BotFather tokeni — faqat Railway'da, repoga yozilmaydi |
+| `TG_WEBHOOK_SECRET` | Telegram webhook so'rovini tekshirish uchun tasodifiy qator |
+| `ADMIN_TELEGRAM_IDS` | admin panel kodi yuboriladigan Telegram ID'lar (vergul bilan); botga `/id` yozib bilinadi |
+
+**Admin panel**: `<PUBLIC_URL>/admin` — kirish kodi botdan keladi (admin avval botga `/start` yozgan bo'lishi kerak).
+Bo'limlar: bosh sahifa, cheklar (summa → kunlar, tasdiqlash/rad etish), biliardxonalar (muddat, qurilma limiti,
+bloklash, chegirma), narxlar (oylik narx, sinov va imtiyoz kunlari, to'lov rekvizitlari), chegirmalar (promo kod va kampaniya).
 
 ## Tekshiruvlar
 
 ```sh
-npm test          # hisob-kitob va servislar testlari (Node'ning node:sqlite moduli bilan haqiqiy SQL)
+npm test          # ilova: hisob-kitob, servislar, ikki qurilma sinxroni
 npm run typecheck
 npm run lint
+cd server && npm test && npm run typecheck
 ```
 
-Testlar Node 22.5+ talab qiladi (`node:sqlite`).
+## APK
 
-## APK yig'ish (mijozga berish uchun)
-
-Tayyor APK'lar: [Releases](../../releases) bo'limida.
-
-### Shu kompyuterda (akkauntsiz)
-
-Kerak: JDK 17 va Android SDK (command-line tools). Git Bash'da:
-
-```sh
-export JAVA_HOME=~/.jdks/jdk-17.0.20.1+1 ANDROID_HOME=~/Android/Sdk
-npx expo prebuild --platform android --clean     # android/ papkasi app.json'dan yaratiladi (git'ga kirmaydi)
-cd android && ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
-# imzolash (kalit repoda EMAS, ~/.greentable/ da saqlanadi):
-$ANDROID_HOME/build-tools/<versiya>/apksigner.bat sign --ks ~/.greentable/greentable-release.jks \
-  --out greentable-<versiya>.apk app/build/outputs/apk/release/app-release.apk
-```
-
-Keyingi versiyalarda `app.json` dagi `version` va `android.versionCode` ni oshiring va **aynan shu kalit** bilan
-imzolang — aks holda telefondagi ilovani yangilab bo'lmaydi.
-
-### EAS (Expo bulutida)
-
-```sh
-npx eas-cli@latest login
-npx eas-cli@latest build -p android --profile preview
-```
-
-Android paket nomi `app.json` da: `uz.greentable.app`.
-
-### Zaxira faylini ochish
-
-APK o'rnatilgan telefonda Telegram yoki fayl menejeridagi zaxira fayli (`.json`) bosilganda "Open with" ro'yxatida
-**GreenTable** chiqadi — tanlansa, zaxira sahifasi ochilib birlashtirish so'raladi (PIN o'rnatilgan bo'lsa, avval PIN).
-Bu faqat o'rnatilgan ilovada ishlaydi, Expo Go'da emas.
+Yig'ish va chiqarish — `.claude/skills/android-release` (EAS, kerak bo'lsa lokal Gradle).
+Har yangi versiyada `app.json` dagi `version` va `android.versionCode` oshiriladi va **aynan shu kalit** bilan imzolanadi.
 
 ## Brend
 
-- Logo manbasi: `assets/brand/greentable-logo.png`. Ikonka, adaptiv ikonka (fon/old qism/monoxrom), splash va
-  `logo-mark.png` shundan olingan.
-- Ranglar `src/theme.ts` da: grafit fon `#121417`, zumrad `#00C853` (brend, band stollar, kirim),
-  oltin `#D4AF37` (taymerlar, pauza, qarz), oq `#FFFFFF` (matn), kulrang `#8C929D` (ikkinchi darajali, bo'sh stollar).
-  Xavfli amallar uchun qo'shimcha qizil `#FF5A5F`.
-- Ilova qorong'i mavzuda; chek esa ulashilganda o'qilishi uchun oq qog'oz ko'rinishida.
+- Logo manbasi: `assets/brand/greentable-logo.png`.
+- Ranglar `src/theme.ts` da: grafit fon `#121417`, zumrad `#00C853`, oltin `#D4AF37`, oq, kulrang `#8C929D`,
+  xavfli amallar uchun qizil `#FF5A5F`. Admin panel ham shu ranglarda.
 
-## Tuzilma
+## Muhim qarorlar
 
-```
-src/
-  app/            ekranlar (Expo Router): (tabs)/ Zal, Savdo, Qarzlar, Kassa, Sozlamalar
-  components/     umumiy UI: TableCard, ProductPicker, CustomerPicker, PinProvider, ...
-  db/             sxema/migratsiyalar, useQuery hook, Db interfeysi
-  services/       biznes mantiq (ekranlarga bog'liq emas, testlanadi)
-    billing.ts    sof hisob-kitob: vaqt, yaxlitlash, to'lov taqsimoti
-    bills.ts      seans, savdo, hisobni yopish/bekor qilish
-    customers.ts  qarz daftari
-    reports.ts    hisobot va davrlar
-    backup.ts     zaxira eksport, ikki telefon ma'lumotini birlashtirish, tarixni tozalash
-__tests__/        jest testlari
-test/nodeDb.ts    testlar uchun xotiradagi SQLite adapteri
-```
-
-### Muhim qarorlar
-
-- Summalar so'mda **butun son** sifatida saqlanadi.
-- Taymer vaqt belgilaridan hisoblanadi (`started_at`, `paused_ms`) — ilova yopilsa ham vaqt yo'qolmaydi.
-- Stol narxi seans boshida yozib qo'yiladi — narx o'zgarsa ochiq seanslarga ta'sir qilmaydi.
-- Boshlangan har bir daqiqa to'liq hisoblanadi, keyin stol vaqti summasi sozlamaga ko'ra yaxlitlanadi.
-- Chek yopish, qarz va to'lov bitta tranzaksiyada yoziladi. Tranzaksiyalar navbat bilan bajariladi.
-- Har bir yozuvda global `uid` va `updated_at` bor: ikki telefon ma'lumoti `uid` bo'yicha birlashtiriladi,
-  bir xil yozuvda keyinroq o'zgargani qoladi. Stol/mahsulot/xarajat turi/mijoz `uid` bo'yicha topilmasa,
-  nomi bo'yicha moslanadi. Namunaviy stol va mahsulotlar har telefonda bir xil `uid` oladi (`seed-table-1`...).
-- Yozuvlar butunlay o'chirilmaydi: chek `cancelled` holatiga o'tadi, to'lov/qarz/xarajat `deleted_at` bilan
-  belgilanadi — shunda o'chirish ham boshqa telefonga yetib boradi.
-- Ombor qoldig'i saqlanmaydi, hisoblanadi: kirim/sanoq harakatlari (`stock_moves`) − bekor qilinmagan cheklardagi sotuv.
-- Ochiq hisoblar (o'ynalayotgan stol, yopilmagan savdo) zaxira fayliga kirmaydi.
-- Yakuniy summa hisoblangandan farq qilsa, farq `bills.discount` ga yoziladi (manfiy — ustama).
+- Summalar so'mda **butun son**. Taymer vaqt belgilaridan hisoblanadi. Stol narxi seans boshida yozib qo'yiladi.
+- Har bir yozuvda global `uid` va `updated_at`. **Sinxron**: triggerlar har o'zgarishni `sync_outbox` ga yozadi va
+  `updated_at` ni oshiradi (servislar sinxron haqida bilmaydi). Server yozuvlarni JSON ko'rinishida saqlaydi
+  (`sync_rows`), har yozuvga `rev` beradi; qurilma avval `rev` bo'yicha yangilarini oladi, keyin o'zinikini yuboradi.
+  Bir xil yozuvda **oxirgi o'zgarish yutadi** — shuning uchun telefon soati to'g'ri bo'lishi kerak (farq bo'lsa ilova ogohlantiradi).
+- Birinchi sinxronda stol/mahsulot/xarajat turi/mijoz nomi bo'yicha moslanadi (v1 dan qolgan ma'lumot ikki marta
+  paydo bo'lmasin); keyin — faqat `uid` bo'yicha.
+- "Tarixni tozalash" serverda bajariladi (faqat egasi): biliardxonaning `data_epoch` i oshadi va barcha qurilmalar
+  lokal bazani tozalab, serverdan qaytadan yuklaydi.
+- Ombor qoldig'i hisoblanadi: kirim/sanoq (`stock_moves`) − bekor qilinmagan cheklardagi sotuv.
+- Obuna biliardxonaga bog'liq; narx — oylik narx minus eng katta faol chegirma (chegirmalar qo'shilmaydi).
+  Chek tasdiqlanganda kunlar = summa ÷ chegirmali narx × 30, muddat joriy muddat (sinov ham) ustiga qo'shiladi.
 - Ish kuni sukut bo'yicha 06:00 da boshlanadi: tungi o'yinlar kechagi kun hisobotiga tushadi (sozlanadi).
 
 ### Yangi migratsiya qo'shish
 
-`src/db/migrations.ts` dagi `MIGRATIONS` massivining oxiriga yangi SQL qo'shing. Eski elementlarni o'zgartirmang.
+Ilova: `src/db/migrations.ts` dagi `MIGRATIONS` oxiriga yangi SQL (eskilarini o'zgartirmang; yangi sinxron jadval
+bo'lsa `SYNC_TABLES`, `src/sync/codec.ts`, `src/sync/apply.ts` va `server/src/services/sync.ts` dagi ro'yxatga qo'shing).
+Server: `server/src/db/schema.ts` ni o'zgartirib, `npm run db:generate`.
