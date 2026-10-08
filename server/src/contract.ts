@@ -66,6 +66,8 @@ export interface AuthStartResponse {
 export type AuthPollResponse =
   | { status: 'pending' }
   | { status: 'expired' }
+  /** Telegram'da «Bu men emas» bosildi. */
+  | { status: 'rejected' }
   | { status: 'ok'; deviceToken: string; me: MeResponse };
 
 export interface SyncChange {

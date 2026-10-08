@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, or } from 'drizzle-orm';
 import type { Db } from '../db/client.ts';
 import { devices, loginRequests, type Role } from '../db/schema.ts';
 import { getHall, memberRole, type Device, type Hall } from './halls.ts';
@@ -32,12 +32,53 @@ export async function pendingLogin(db: Db, token: string, now: Date): Promise<Lo
   return row;
 }
 
-/** Bot foydalanuvchi va biliardxonani aniqlagach so'rovni tasdiqlaydi. */
-export async function confirmLogin(db: Db, token: string, userId: number, hallId: string, now: Date): Promise<boolean> {
+/**
+ * Havolani ochgan Telegram foydalanuvchisi va biliardxona so'rovga bog'lanadi (hali tasdiqlanmagan).
+ * Boshqa foydalanuvchiga bog'langan so'rovni o'zlashtirib bo'lmaydi.
+ */
+export async function bindLogin(db: Db, token: string, userId: number, hallId: string, now: Date): Promise<LoginRequest | undefined> {
+  const [row] = await db
+    .update(loginRequests)
+    .set({ userId, hallId })
+    .where(
+      and(
+        eq(loginRequests.token, token),
+        eq(loginRequests.status, 'pending'),
+        gt(loginRequests.expiresAt, now),
+        or(isNull(loginRequests.userId), eq(loginRequests.userId, userId)),
+      ),
+    )
+    .returning();
+  return row;
+}
+
+/**
+ * Foydalanuvchi botda «Ha, bu men» ni bosdi. Faqat so'rov bog'langan foydalanuvchi tasdiqlay oladi —
+ * havolani o'zi ochmagan bo'lsa ham, uni ochgan odam tasdiqlashi shart (boshqasining havolasi bilan avtomatik kirilmaydi).
+ */
+export async function confirmLogin(db: Db, token: string, userId: number, now: Date): Promise<LoginRequest | undefined> {
+  const [row] = await db
+    .update(loginRequests)
+    .set({ status: 'confirmed' })
+    .where(
+      and(
+        eq(loginRequests.token, token),
+        eq(loginRequests.status, 'pending'),
+        gt(loginRequests.expiresAt, now),
+        eq(loginRequests.userId, userId),
+        isNotNull(loginRequests.hallId),
+      ),
+    )
+    .returning();
+  return row;
+}
+
+/** «Bu men emas» — so'rov bekor qilinadi, ilova «rad etildi» deb ko'rsatadi. */
+export async function rejectLogin(db: Db, token: string, userId: number): Promise<boolean> {
   const rows = await db
     .update(loginRequests)
-    .set({ status: 'confirmed', userId, hallId })
-    .where(and(eq(loginRequests.token, token), eq(loginRequests.status, 'pending'), gt(loginRequests.expiresAt, now)))
+    .set({ status: 'rejected' })
+    .where(and(eq(loginRequests.token, token), eq(loginRequests.status, 'pending'), eq(loginRequests.userId, userId)))
     .returning({ token: loginRequests.token });
   return rows.length > 0;
 }
@@ -45,6 +86,7 @@ export async function confirmLogin(db: Db, token: string, userId: number, hallId
 export type PollResult =
   | { status: 'pending' }
   | { status: 'expired' }
+  | { status: 'rejected' }
   | { status: 'ok'; deviceToken: string; deviceId: string; hallId: string; userId: number };
 
 /**
@@ -54,6 +96,7 @@ export type PollResult =
 export async function pollLogin(db: Db, token: string, now: Date): Promise<PollResult> {
   const [req] = await db.select().from(loginRequests).where(eq(loginRequests.token, token));
   if (!req || req.status === 'consumed') return { status: 'expired' };
+  if (req.status === 'rejected') return { status: 'rejected' };
   if (req.status === 'pending') return req.expiresAt > now ? { status: 'pending' } : { status: 'expired' };
   return db.transaction(async (tx) => {
     const taken = await tx

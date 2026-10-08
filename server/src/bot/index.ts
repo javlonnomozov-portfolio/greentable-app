@@ -2,8 +2,8 @@ import { Api, Bot, InlineKeyboard, Keyboard, type Context } from 'grammy';
 import type { Db } from '../db/client.ts';
 import type { BotIntent } from '../db/schema.ts';
 import type { Env } from '../env.ts';
-import type { Notifier } from '../notifier.ts';
-import { confirmLogin, pendingLogin } from '../services/auth.ts';
+import type { NotifyButton, Notifier } from '../notifier.ts';
+import { bindLogin, confirmLogin, pendingLogin, rejectLogin } from '../services/auth.ts';
 import { createReceipt, hallBilling } from '../services/billing.ts';
 import { discountLabel, redeemPromo } from '../services/discounts.ts';
 import {
@@ -22,7 +22,7 @@ import {
 } from '../services/halls.ts';
 import { getPricing } from '../services/pricing.ts';
 import { displayName, getUser, setActiveHall, setBotState, setPhone, upsertTelegramUser, type User } from '../services/users.ts';
-import { escapeHtml, formatDate } from '../services/util.ts';
+import { escapeHtml, formatDate, formatTime } from '../services/util.ts';
 import { STATE_LABEL, priceLine, statusLines } from '../texts.ts';
 
 type Ctx = Context & { user: User };
@@ -141,13 +141,21 @@ export function createBot(token: string, deps: BotDeps): Bot<Ctx> {
       return ctx.reply(`Qurilmalar limiti: ${limit} ta. Yangi telefon uchun eskisini o'chiring:`, { reply_markup: kb });
     }
 
-    if (!(await confirmLogin(db, token, ctx.user.id, hall.id, now()))) return expiredLogin(ctx);
-    await setActiveHall(db, ctx.user.id, hall.id);
+    // Havola bosilishi bilan kirilmaydi: firibgar o'z havolasini egaga yuborishi mumkin. Egasi qurilmani ko'rib tasdiqlaydi.
+    if (!(await bindLogin(db, token, ctx.user.id, hall.id, now()))) return expiredLogin(ctx);
     await setBotState(db, ctx.user.id, null);
-    await ctx.reply(`✅ <b>${escapeHtml(hall.name)}</b> — kirish tasdiqlandi.\nIlovaga qayting, u o'zi ochiladi.`, {
-      ...html,
-      reply_markup: menuKeyboard(),
-    });
+    await ctx.reply(
+      [
+        '📱 <b>Ilovaga kirish so‘rovi</b>',
+        `Qurilma: ${escapeHtml(req.model ?? 'noma’lum')}`,
+        `Vaqt: ${formatTime(req.createdAt)}`,
+        `Biliardxona: ${escapeHtml(hall.name)}`,
+        '',
+        "Hozir o'zingiz ilovaga kiryapsizmi?",
+        "⚠️ Agar bu havolani sizga boshqa odam yuborgan bo'lsa — «Bu men emas» ni bosing.",
+      ].join('\n'),
+      { ...html, reply_markup: new InlineKeyboard().text('✅ Ha, bu men', `lok:${token}`).text('❌ Bu men emas', `lno:${token}`) },
+    );
   }
 
   bot.command('start', async (ctx) => {
@@ -354,6 +362,46 @@ export function createBot(token: string, deps: BotDeps): Bot<Ctx> {
     await ctx.answerCallbackQuery({ text: "Qurilma topilmadi" });
   });
 
+  bot.callbackQuery(/^lok:(.+)$/, async (ctx) => {
+    const req = await confirmLogin(db, ctx.match[1], ctx.user.id, now());
+    await ctx.editMessageReplyMarkup().catch(() => {});
+    if (!req?.hallId) {
+      await ctx.answerCallbackQuery();
+      return expiredLogin(ctx);
+    }
+    await ctx.answerCallbackQuery({ text: 'Tasdiqlandi' });
+    await setActiveHall(db, ctx.user.id, req.hallId);
+    const hall = await getHall(db, req.hallId);
+    return ctx.reply(`✅ <b>${escapeHtml(hall?.name ?? '')}</b> — kirish tasdiqlandi.\nIlovaga qayting, u o'zi ochiladi.`, {
+      ...html,
+      reply_markup: menuKeyboard(),
+    });
+  });
+
+  bot.callbackQuery(/^lno:(.+)$/, async (ctx) => {
+    const ok = await rejectLogin(db, ctx.match[1], ctx.user.id);
+    await ctx.editMessageReplyMarkup().catch(() => {});
+    await ctx.answerCallbackQuery({ text: ok ? 'Rad etildi' : '' });
+    return ctx.reply(
+      ok
+        ? "❌ Kirish rad etildi — bu qurilma biliardxonangizga kira olmaydi.\nBegona odam havola yuborgan bo'lsa, uni hech qachon bosmang."
+        : "So'rov eskirgan yoki allaqachon ko'rib chiqilgan.",
+      { reply_markup: menuKeyboard() },
+    );
+  });
+
+  /** Egasiga kelgan «yangi qurilma kirdi» xabaridagi «O'chirish» tugmasi. */
+  bot.callbackQuery(/^dv:(.+)$/, async (ctx) => {
+    for (const m of await memberships(db, ctx.user.id)) {
+      if (m.role === 'owner' && (await revokeDevice(db, m.hall.id, ctx.match[1], now()))) {
+        await ctx.editMessageReplyMarkup().catch(() => {});
+        await ctx.answerCallbackQuery({ text: "Qurilma o'chirildi" });
+        return ctx.reply("🗑 Qurilma o'chirildi — u endi biliardxona ma'lumotlarini ko'ra olmaydi.");
+      }
+    }
+    await ctx.answerCallbackQuery({ text: 'Qurilma topilmadi yoki allaqachon o‘chirilgan' });
+  });
+
   bot.callbackQuery(/^active:(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery();
     if (await memberRole(db, ctx.match[1], ctx.user.id)) {
@@ -367,10 +415,10 @@ export function createBot(token: string, deps: BotDeps): Bot<Ctx> {
   return bot;
 }
 
-const urlKb = (buttons?: { text: string; url: string }[]) => {
+const urlKb = (buttons?: NotifyButton[]) => {
   if (!buttons?.length) return undefined;
   const kb = new InlineKeyboard();
-  for (const b of buttons) kb.url(b.text, b.url).row();
+  for (const b of buttons) ('url' in b ? kb.url(b.text, b.url) : kb.text(b.text, b.data)).row();
   return kb;
 };
 

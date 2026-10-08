@@ -32,7 +32,13 @@ export function formatDate(d: Date): string {
   return `${dd}.${mm}.${t.getUTCFullYear()}`;
 }
 
-export const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/** Toshkent vaqti bilan soat: 08:45 */
+export function formatTime(d: Date): string {
+  const t = new Date(d.getTime() + 5 * 3_600_000);
+  return `${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+export const escapeHtml =(s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Oddiy xotiradagi cheklovchi: `key` bo'yicha `windowMs` ichida `max` ta so'rov. */
 export function rateLimiter(max: number, windowMs: number) {

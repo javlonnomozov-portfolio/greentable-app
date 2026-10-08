@@ -115,7 +115,8 @@ export const devices = pgTable(
   (t) => [index('devices_hall_idx').on(t.hallId)],
 );
 
-export type LoginStatus = 'pending' | 'confirmed' | 'consumed';
+/** pending → (bot egasi tasdiqlasa) confirmed → (ilova tokenni olsa) consumed; yoki rejected. */
+export type LoginStatus = 'pending' | 'confirmed' | 'consumed' | 'rejected';
 
 export const loginRequests = pgTable('login_requests', {
   token: text('token').primaryKey(),

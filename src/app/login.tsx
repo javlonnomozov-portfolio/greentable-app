@@ -54,6 +54,11 @@ export default function LoginScreen() {
           await completeLogin(res.deviceToken, res.me);
           return;
         }
+        if (res.status === 'rejected') {
+          setLink(null);
+          setError("Kirish rad etildi — Telegram'da «Bu men emas» bosildi.");
+          return;
+        }
         if (res.status === 'expired') {
           setLink(null);
           setError('Kirish havolasi eskirdi. Qaytadan urining.');
@@ -104,7 +109,13 @@ export default function LoginScreen() {
               Telegram'da tasdiqlang
             </Text>
             <View style={styles.steps}>
-              {['Telegram\'da GreenTable boti ochiladi', '«START» (Boshlash) ni bosing', "Kerak bo'lsa raqam va nomni yuboring", 'Ilovaga qayting — o‘zi ochiladi'].map(
+              {[
+                "Telegram'da GreenTable boti ochiladi",
+                '«START» (Boshlash) ni bosing',
+                "Birinchi marta bo'lsa — raqam va biliardxona nomini yuboring",
+                '«✅ Ha, bu men» ni bosing',
+                'Ilovaga qayting — o‘zi ochiladi',
+              ].map(
                 (s, i) => (
                   <View key={s} style={styles.step}>
                     <Text style={styles.num}>{i + 1}</Text>

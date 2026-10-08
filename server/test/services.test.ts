@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Database } from '../src/db/client.ts';
-import { authenticate, confirmLogin, pollLogin, startLogin } from '../src/services/auth.ts';
+import { authenticate, bindLogin, confirmLogin, pollLogin, rejectLogin, startLogin } from '../src/services/auth.ts';
 import { adjustSubscription, approveReceipt, createReceipt, hallBilling, quote, rejectReceipt } from '../src/services/billing.ts';
 import { createDiscount, redeemPromo } from '../src/services/discounts.ts';
 import { acceptInvite, createHall, createInvite, hasDeviceSlot, memberRole, revokeDevice } from '../src/services/halls.ts';
@@ -70,6 +70,35 @@ describe('biliardxona va sinov', () => {
   });
 });
 
+/** Bot: havolani ochgan foydalanuvchiga bog'laydi, u «Ha, bu men» ni bosadi. */
+async function approve(token: string, userId: number, hallId: string, at: Date): Promise<boolean> {
+  await bindLogin(db, token, userId, hallId, at);
+  return !!(await confirmLogin(db, token, userId, at));
+}
+
+describe('kirish xavfsizligi', () => {
+  it('havola bosilishi bilan kirilmaydi: faqat havolani ochgan odam tasdiqlaydi, rad etsa ilova kira olmaydi', async () => {
+    const owner = await makeUser(db);
+    const hall = await createHall(db, owner, 'Grand', T0);
+    // Firibgar ilovada havola oldi va uni egaga yubordi; ega havolani ochdi.
+    const { token } = await startLogin(db, { installId: 'firibgar-telefoni' }, T0);
+    expect(await bindLogin(db, token, owner.id, hall.id, T0)).toBeTruthy();
+    expect(await pollLogin(db, token, T0)).toEqual({ status: 'pending' });
+
+    const stranger = await makeUser(db);
+    expect(await confirmLogin(db, token, stranger.id, T0)).toBeUndefined();
+    expect(await bindLogin(db, token, stranger.id, hall.id, T0)).toBeUndefined();
+
+    expect(await rejectLogin(db, token, owner.id)).toBe(true);
+    expect(await pollLogin(db, token, T0)).toEqual({ status: 'rejected' });
+    expect(await confirmLogin(db, token, owner.id, T0)).toBeUndefined();
+
+    // Bog'lanmagan so'rovni tasdiqlab bo'lmaydi.
+    const fresh = await startLogin(db, { installId: 'x-1234567' }, T0);
+    expect(await confirmLogin(db, fresh.token, owner.id, T0)).toBeUndefined();
+  });
+});
+
 describe('kirish va qurilmalar', () => {
   it('login token bir martalik, qurilma limiti va bekor qilish', async () => {
     const u = await makeUser(db);
@@ -77,7 +106,7 @@ describe('kirish va qurilmalar', () => {
 
     const { token } = await startLogin(db, { installId: 'phone-1', model: 'S22' }, T0);
     expect(await pollLogin(db, token, T0)).toEqual({ status: 'pending' });
-    expect(await confirmLogin(db, token, u.id, hall.id, T0)).toBe(true);
+    expect(await approve(token, u.id, hall.id, T0)).toBe(true);
     const ok = await pollLogin(db, token, T0);
     expect(ok.status).toBe('ok');
     expect(await pollLogin(db, token, T0)).toEqual({ status: 'expired' });
@@ -86,12 +115,12 @@ describe('kirish va qurilmalar', () => {
 
     // Muddati o'tgan so'rov tasdiqlanmaydi.
     const late = await startLogin(db, { installId: 'x' }, T0);
-    expect(await confirmLogin(db, late.token, u.id, hall.id, new Date(T0.getTime() + 16 * 60_000))).toBe(false);
+    expect(await approve(late.token, u.id, hall.id, new Date(T0.getTime() + 16 * 60_000))).toBe(false);
 
     // Limit 2: shu o'rnatishdan qayta kirish hisoblanmaydi.
     expect(await hasDeviceSlot(db, hall, 'phone-1')).toBe(true);
     const second = await startLogin(db, { installId: 'phone-2' }, T0);
-    await confirmLogin(db, second.token, u.id, hall.id, T0);
+    await approve(second.token, u.id, hall.id, T0);
     const s = await pollLogin(db, second.token, T0);
     expect(await hasDeviceSlot(db, hall, 'phone-3')).toBe(false);
     if (s.status !== 'ok') throw new Error();
@@ -101,7 +130,7 @@ describe('kirish va qurilmalar', () => {
 
     // Qayta kirish eski tokenni bekor qiladi.
     const again = await startLogin(db, { installId: 'phone-1' }, T0);
-    await confirmLogin(db, again.token, u.id, hall.id, T0);
+    await approve(again.token, u.id, hall.id, T0);
     await pollLogin(db, again.token, T0);
     expect(await authenticate(db, ok.deviceToken, T0)).toBeNull();
   });

@@ -5,9 +5,9 @@ import type { Database } from '../src/db/client.ts';
 import { loadEnv } from '../src/env.ts';
 import { runReminders } from '../src/jobs/reminders.ts';
 import { memoryNotifier } from '../src/notifier.ts';
-import { confirmLogin } from '../src/services/auth.ts';
+import { bindLogin, confirmLogin } from '../src/services/auth.ts';
 import { createReceipt } from '../src/services/billing.ts';
-import { createHall } from '../src/services/halls.ts';
+import { acceptInvite, createHall, createInvite } from '../src/services/halls.ts';
 import { updatePricing } from '../src/services/pricing.ts';
 import { getUser } from '../src/services/users.ts';
 import { at, makeUser, testDb, T0 } from './helpers.ts';
@@ -48,7 +48,8 @@ async function login(installId: string) {
   const start = (await (await app.request('/api/auth/start', json('POST', { installId, model: 'SM-S901N' }))).json()) as AuthStartResponse;
   expect(start.url).toBe(`https://t.me/GreenTableTestBot?start=login_${start.token}`);
   expect(((await (await app.request(`/api/auth/poll?token=${start.token}`)).json()) as AuthPollResponse).status).toBe('pending');
-  await confirmLogin(database.db, start.token, owner.id, hall.id, clock);
+  await bindLogin(database.db, start.token, owner.id, hall.id, clock);
+  await confirmLogin(database.db, start.token, owner.id, clock);
   const poll = (await (await app.request(`/api/auth/poll?token=${start.token}`)).json()) as AuthPollResponse;
   if (poll.status !== 'ok') throw new Error('login failed');
   return { owner, hall, token: poll.deviceToken, me: poll.me };
@@ -89,6 +90,21 @@ describe('ilova API', () => {
 
     expect((await app.request('/api/auth/logout', json('POST', {}, token))).status).toBe(200);
     expect((await app.request('/api/me', json('GET', undefined, token))).status).toBe(401);
+  });
+
+  it('sherik yangi qurilmadan kirsa egasiga «O‘chirish» tugmasi bilan xabar boradi', async () => {
+    const { hall, owner } = await login('install-owner-1');
+    const partner = await makeUser(database.db);
+    const { code } = await createInvite(database.db, hall.id, owner.id, clock);
+    await acceptInvite(database.db, code, partner, clock);
+    const start = (await (await app.request('/api/auth/start', json('POST', { installId: 'install-partner-1', model: 'Galaxy A52' }))).json()) as AuthStartResponse;
+    await bindLogin(database.db, start.token, partner.id, hall.id, clock);
+    await confirmLogin(database.db, start.token, partner.id, clock);
+    const poll = (await (await app.request(`/api/auth/poll?token=${start.token}`)).json()) as AuthPollResponse;
+    if (poll.status !== 'ok') throw new Error();
+    const msg = notifier.sent.find((m) => m.to === owner.telegramId);
+    expect(msg?.html).toContain('Galaxy A52');
+    expect(msg?.buttons).toEqual([{ text: "🗑 Qurilmani o'chirish", data: `dv:${poll.me.deviceId}` }]);
   });
 
   it('muddati tugagach faqat ko‘rish, bloklangan biliardxona sinxronlanmaydi', async () => {

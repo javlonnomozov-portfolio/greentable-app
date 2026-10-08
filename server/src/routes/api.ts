@@ -8,7 +8,9 @@ import { hallBilling, toSubscriptionInfo } from '../services/billing.ts';
 import { activeDevices, createInvite, deviceLimit, revokeDevice } from '../services/halls.ts';
 import { EpochMismatch, MAX_PULL, MAX_PUSH, SYNC_TABLES, pullChanges, pushChanges, resetHallData } from '../services/sync.ts';
 import { displayName } from '../services/users.ts';
-import { rateLimiter } from '../services/util.ts';
+import { escapeHtml, rateLimiter } from '../services/util.ts';
+import { users } from '../db/schema.ts';
+import { eq } from 'drizzle-orm';
 
 type Env = { Variables: { auth: DeviceAuth } };
 
@@ -98,6 +100,17 @@ export function apiRoutes(deps: AppDeps) {
     if (res.status !== 'ok') return c.json<AuthPollResponse>(res);
     const auth = await authenticate(db, res.deviceToken, now());
     if (!auth) return c.json<AuthPollResponse>({ status: 'expired' });
+    if (auth.role !== 'owner') {
+      // Sherik yangi qurilmadan kirdi — egasi bilsin va kerak bo'lsa darhol o'chirsin.
+      const [owner] = await db.select({ telegramId: users.telegramId }).from(users).where(eq(users.id, auth.hall.ownerUserId));
+      if (owner) {
+        await deps.notifier.toUser(
+          owner.telegramId,
+          `📱 <b>${escapeHtml(auth.hall.name)}</b>: yangi qurilma kirdi\n${escapeHtml(displayName(auth.user))} — ${escapeHtml(auth.device.model ?? 'telefon')}`,
+          [{ text: "🗑 Qurilmani o'chirish", data: `dv:${auth.device.id}` }],
+        );
+      }
+    }
     return c.json<AuthPollResponse>({ status: 'ok', deviceToken: res.deviceToken, me: await buildMe(deps, auth) });
   });
 
