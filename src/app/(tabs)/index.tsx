@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { FlatList, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { FlatList, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Button, Chip, Dialog, Portal, Text, TextInput, TouchableRipple } from 'react-native-paper';
 import { CustomerPicker } from '@/components/CustomerPicker';
 import { DurationChips } from '@/components/DurationChips';
@@ -129,46 +129,49 @@ export default function HallScreen() {
       />
 
       <Portal>
-        <Dialog visible={starting != null} onDismiss={() => setStarting(null)}>
+        <Dialog visible={starting != null} onDismiss={() => setStarting(null)} style={styles.dialogBox}>
           <Dialog.Title>{starting?.name} — boshlash</Dialog.Title>
-          <Dialog.Content style={styles.dialog}>
-            <Text variant="bodyMedium" style={{ color: palette.muted }}>
-              Narx: {formatSom(starting?.hourly_rate ?? 0)} / soat
-            </Text>
-            <Button
-              mode="outlined"
-              icon="clock-edit-outline"
-              onPress={() => setPickingTime(true)}
-              textColor={startAt ? palette.paused : undefined}
-            >
-              {startAt ? `Boshlangan: ${formatTime(startAt)}` : 'Boshlanish: hozir'}
-            </Button>
-            {startAt ? (
-              <Text variant="bodySmall" style={{ color: palette.paused, textAlign: 'center' }}>
-                {formatAgo(now - startAt)} — vaqt shundan hisoblanadi
+          {/* Muddat va mijoz qo'shilganda oyna kichik ekranga sig'masligi mumkin — ichi aylantiriladi. */}
+          <Dialog.ScrollArea style={styles.scrollArea}>
+            <ScrollView contentContainerStyle={styles.dialog} keyboardShouldPersistTaps="handled">
+              <Text variant="bodyMedium" style={{ color: palette.muted }}>
+                Narx: {formatSom(starting?.hourly_rate ?? 0)} / soat
               </Text>
-            ) : null}
-            <Text variant="labelLarge">Muddat</Text>
-            <DurationChips value={planned} onChange={setPlanned} />
-            {planned ? (
-              <Text variant="bodySmall" style={{ color: palette.timer }}>
-                {formatMinutes(planned)} ≈ {formatSom(applyRounding(segmentCharge(planned * 60_000, starting?.hourly_rate ?? 0), rounding))}
-                {' '}— vaqt tugaganda ovozli xabar beriladi
-              </Text>
-            ) : null}
-            {customer ? (
-              <Chip icon="account" onClose={() => setCustomer(null)}>
-                {customer.name}
-              </Chip>
-            ) : (
-              <>
-                <TextInput mode="outlined" label="Kim o'ynayapti? (ixtiyoriy)" value={label} onChangeText={setLabel} />
-                <Button icon="notebook-outline" onPress={() => setPickingCustomer(true)}>
-                  Qarz daftaridan tanlash
-                </Button>
-              </>
-            )}
-          </Dialog.Content>
+              <Button
+                mode="outlined"
+                icon="clock-edit-outline"
+                onPress={() => setPickingTime(true)}
+                textColor={startAt ? palette.paused : undefined}
+              >
+                {startAt ? `Boshlangan: ${formatTime(startAt)}` : 'Boshlanish: hozir'}
+              </Button>
+              {startAt ? (
+                <Text variant="bodySmall" style={{ color: palette.paused, textAlign: 'center' }}>
+                  {formatAgo(now - startAt)} — vaqt shundan hisoblanadi
+                </Text>
+              ) : null}
+              <Text variant="labelLarge">Muddat</Text>
+              <DurationChips value={planned} onChange={setPlanned} />
+              {planned ? (
+                <Text variant="bodySmall" style={{ color: palette.timer }}>
+                  {formatMinutes(planned)} ≈ {formatSom(applyRounding(segmentCharge(planned * 60_000, starting?.hourly_rate ?? 0), rounding))}
+                  {' '}— vaqt tugaganda ovozli xabar beriladi
+                </Text>
+              ) : null}
+              {customer ? (
+                <Chip icon="account" onClose={() => setCustomer(null)}>
+                  {customer.name}
+                </Chip>
+              ) : (
+                <>
+                  <TextInput mode="outlined" label="Kim o'ynayapti? (ixtiyoriy)" value={label} onChangeText={setLabel} />
+                  <Button icon="notebook-outline" onPress={() => setPickingCustomer(true)}>
+                    Qarz daftaridan tanlash
+                  </Button>
+                </>
+              )}
+            </ScrollView>
+          </Dialog.ScrollArea>
           <Dialog.Actions>
             <Button onPress={() => setStarting(null)}>Bekor</Button>
             <Button mode="contained" icon="play" onPress={start}>
@@ -213,7 +216,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   grid: { paddingHorizontal: 10, paddingBottom: 24 },
-  dialog: { gap: 12 },
+  dialogBox: { maxHeight: '88%' },
+  scrollArea: { paddingHorizontal: 0, borderTopWidth: 0, borderBottomWidth: 0 },
+  dialog: { gap: 12, paddingHorizontal: 24, paddingVertical: 4 },
   addTile: {
     borderRadius: 18,
     borderWidth: 2,

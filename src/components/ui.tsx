@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ComponentProps, ReactNode } from 'react';
 import { StyleSheet, View, type StyleProp, type TextStyle } from 'react-native';
-import { Button, SegmentedButtons, Text, TextInput, useTheme } from 'react-native-paper';
+import { Button, Chip, SegmentedButtons, Text, TextInput, useTheme } from 'react-native-paper';
 import type { PaymentMethod } from '@/db/models';
 import { palette } from '@/theme';
 import { formatSom, parseSom, somInputValue } from '@/utils/money';
@@ -123,6 +123,39 @@ export function Row({
 
 export function MoneyRow(props: { label: string; amount: number; strong?: boolean; color?: string; hint?: string }) {
   return <Row {...props} value={formatSom(props.amount)} />;
+}
+
+/**
+ * Bir nechtadan bittasini tanlash chipi. Paper'ning oddiy chipida tanlangani deyarli ajralmaydi —
+ * bu yerda tanlangani zumrad ramka va fon bilan, qolganlari faqat chiziq bilan.
+ */
+export function ChoiceChip({
+  selected,
+  icon,
+  onPress,
+  children,
+}: {
+  selected: boolean;
+  icon?: IconName;
+  onPress(): void;
+  children: ReactNode;
+}) {
+  const theme = useTheme();
+  return (
+    <Chip
+      compact
+      mode="outlined"
+      icon={icon ?? (selected ? 'check' : undefined)}
+      selected={selected}
+      showSelectedCheck={false}
+      onPress={onPress}
+      style={selected ? { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary } : null}
+      textStyle={selected ? { color: theme.colors.onPrimaryContainer, fontWeight: '700' } : null}
+      accessibilityState={{ selected }}
+    >
+      {children}
+    </Chip>
+  );
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {

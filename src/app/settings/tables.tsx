@@ -1,10 +1,10 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { SectionList, StyleSheet, View } from 'react-native';
-import { Button, Chip, Dialog, Divider, FAB, IconButton, List, Portal, Text, TextInput } from 'react-native-paper';
+import { Button, Dialog, Divider, FAB, IconButton, List, Portal, Text, TextInput } from 'react-native-paper';
 import { useFeedback } from '@/components/FeedbackProvider';
 import { TABLE_KINDS, kindIcon } from '@/components/tableKinds';
-import { AmountInput, EmptyState, PinGate } from '@/components/ui';
+import { AmountInput, ChoiceChip, EmptyState, PinGate } from '@/components/ui';
 import type { TableKind, TableRow } from '@/db/models';
 import { useDb, useQuery } from '@/db/hooks';
 import { useWriteGuard } from '@/hooks/useWriteGuard';
@@ -111,16 +111,14 @@ function TablesEditor() {
           <Dialog.Content style={styles.dialog}>
             <View style={styles.kinds}>
               {TABLE_KINDS.map((k) => (
-                <Chip
+                <ChoiceChip
                   key={k.value}
-                  compact
                   icon={k.icon}
                   selected={kind === k.value}
-                  showSelectedOverlay
                   onPress={() => setEditing((e) => ({ ...e, kind: k.value }))}
                 >
                   {k.label}
-                </Chip>
+                </ChoiceChip>
               ))}
             </View>
             <TextInput

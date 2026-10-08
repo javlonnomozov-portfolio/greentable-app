@@ -4,7 +4,14 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { useQuery } from '@/db/hooks';
 import { listHall } from '@/services/bills';
-import { ALERT_PREFIX, getTimerSound, planAlerts, type AlertKind, type TimerAlert } from '@/services/timerAlerts';
+import {
+  ALERT_PREFIX,
+  getTimerSound,
+  planAlerts,
+  staleAlertIds,
+  type AlertKind,
+  type AlertSource,
+} from '@/services/timerAlerts';
 
 /** Android kanallari: tovush kanalga bog'lanadi (fayllar `app.json` dagi expo-notifications plaginida). */
 const CHANNEL: Record<AlertKind, { id: string; name: string; sound: string }> = {
@@ -45,10 +52,15 @@ async function hasPermission(): Promise<boolean> {
 /**
  * Rejalashtirilgan bildirishnomalarni kerakli ro'yxatga keltiradi. Identifikatorda vaqt bor, shuning uchun
  * faqat to'plamlarni solishtirish kifoya: ortiqchasi bekor qilinadi, yangisi qo'shiladi.
+ * Paneldagi eskirganlari (hisob yopilgan yoki muddat uzaytirilgan) olib tashlanadi.
  */
-async function reconcile(plan: TimerAlert[]): Promise<void> {
+async function reconcile(tables: AlertSource[], enabled: boolean): Promise<void> {
+  const now = Date.now();
+  let plan = enabled ? planAlerts(tables, now) : [];
   await ensureChannels();
   if (plan.length > 0 && !(await hasPermission())) plan = [];
+  const presented = (await Notifications.getPresentedNotificationsAsync()).map((n) => n.request.identifier);
+  for (const id of staleAlertIds(presented, tables, now)) await Notifications.dismissNotificationAsync(id);
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const existing = new Set(scheduled.map((n) => n.identifier).filter((id) => id.startsWith(ALERT_PREFIX)));
   const wanted = new Set(plan.map((a) => a.id));
@@ -72,8 +84,8 @@ async function reconcile(plan: TimerAlert[]): Promise<void> {
 
 // Ketma-ket bajariladi: tez-tez o'zgarishlarda bir-birining ustiga tushmasin.
 let queue: Promise<void> = Promise.resolve();
-const enqueue = (plan: TimerAlert[]) => {
-  queue = queue.then(() => reconcile(plan)).catch((e: unknown) => console.warn('Taymer bildirishnomasi:', e));
+const enqueue = (tables: AlertSource[], enabled: boolean) => {
+  queue = queue.then(() => reconcile(tables, enabled)).catch((e: unknown) => console.warn('Taymer bildirishnomasi:', e));
 };
 
 /**
@@ -86,7 +98,7 @@ export function TimerAlerts() {
 
   useEffect(() => {
     if (!data || Platform.OS === 'web') return;
-    enqueue(data.enabled ? planAlerts(data.tables, Date.now()) : []);
+    enqueue(data.tables, data.enabled);
   }, [data]);
 
   // Bildirishnoma bosilsa — o'sha stol hisobi ochiladi.

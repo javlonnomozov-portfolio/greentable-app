@@ -1,5 +1,5 @@
 import { plannedEndAt, remainingMs } from '@/services/billing';
-import { ALERT_PREFIX, planAlerts, type AlertSource } from '@/services/timerAlerts';
+import { ALERT_PREFIX, planAlerts, staleAlertIds, type AlertSource } from '@/services/timerAlerts';
 
 const MIN = 60_000;
 const T0 = new Date(2026, 9, 8, 18, 0, 0).getTime();
@@ -67,5 +67,24 @@ describe('planAlerts', () => {
 
   it('5 daqiqalik seansda oldindan ogohlantirish yo‘q', () => {
     expect(planAlerts([table({ planned_minutes: 5 })], T0)[0]).toMatchObject({ kind: 'end', at: T0 + 5 * MIN });
+  });
+});
+
+describe('staleAlertIds', () => {
+  const id = (bill: number, min: number) => `${ALERT_PREFIX}${bill}-${T0 + min * MIN}`;
+
+  it('yopilgan hisob va uzaytirilgan muddatning eski bildirishnomalari olib tashlanadi', () => {
+    const shown = [id(7, 55), id(7, 60), id(9, 60), 'boshqa-ilova'];
+    // 7-hisob hali ochiq va muddat o'zgarmagan, 9-hisob yopilgan.
+    expect(staleAlertIds(shown, [table()], T0 + 62 * MIN)).toEqual([id(9, 60)]);
+    // 7-hisob 30 daqiqaga uzaytirildi: eski «5 daqiqa qoldi» va «tugadi» endi noto'g'ri.
+    expect(staleAlertIds(shown, [table({ planned_minutes: 90 })], T0 + 62 * MIN)).toEqual([id(7, 55), id(7, 60), id(9, 60)]);
+    // Muddat olib tashlandi.
+    expect(staleAlertIds(shown, [table({ planned_minutes: null })], T0 + 62 * MIN)).toEqual([id(7, 55), id(7, 60), id(9, 60)]);
+  });
+
+  it('pauzadagi seans bildirishnomalari saqlanadi', () => {
+    const paused = table({ paused_at: T0 + 61 * MIN });
+    expect(staleAlertIds([id(7, 55), id(7, 60)], [paused], T0 + 70 * MIN)).toEqual([]);
   });
 });

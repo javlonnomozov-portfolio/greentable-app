@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Chip, TextInput } from 'react-native-paper';
+import { TextInput } from 'react-native-paper';
+import { ChoiceChip } from './ui';
 
 /** Vaqtli seans uchun tez tanlovlar (daqiqa). null — muddatsiz. */
 const PRESETS: { minutes: number | null; label: string }[] = [
@@ -27,22 +28,20 @@ export function DurationChips({ value, onChange }: Props) {
     <View style={styles.root}>
       <View style={styles.chips}>
         {PRESETS.map((p) => (
-          <Chip
+          <ChoiceChip
             key={p.label}
-            compact
             selected={!custom && value === p.minutes}
-            showSelectedOverlay
             onPress={() => {
               setCustom(false);
               onChange(p.minutes);
             }}
           >
             {p.label}
-          </Chip>
+          </ChoiceChip>
         ))}
-        <Chip compact selected={custom} showSelectedOverlay icon="pencil-outline" onPress={() => setCustom(true)}>
+        <ChoiceChip selected={custom} icon="pencil-outline" onPress={() => setCustom(true)}>
           Boshqa
-        </Chip>
+        </ChoiceChip>
       </View>
       {custom ? (
         <TextInput
