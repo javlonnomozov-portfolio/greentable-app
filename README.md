@@ -11,6 +11,11 @@ barcha qurilmalari bilan avtomatik sinxronlanadi.
 - **Zal** — stollar gridi: bo'sh / band / pauza, jonli taymer va joriy summa. Seansni boshlash, pauza,
   boshqa stolga ko'chirish (eski vaqt eski narxda hisoblanadi), mahsulot qo'shish. Stollar soni erkin:
   "Stol qo'shish" kartasi, sozlamalarda olib tashlash/qaytarish (tarixi saqlanadi). Bo'sh biliardxonada — tez sozlash.
+  Joy turlari: Biliard / PlayStation / Kompyuter / Boshqa.
+- **Vaqtli seans** (PS, kompyuter) — boshlashda muddat (30 daq … 3 soat yoki ixtiyoriy), kartada qolgan vaqt,
+  oxirgi 5 daqiqada oltin, tugagach qizil «+0:05:12» (vaqt hisoblanishda davom etadi). Tugashiga 5 daqiqa qolganda
+  yumshoq ovoz, tugaganda va keyin har 5 daqiqada bir soatgacha billiard sharlari ovozi — mahalliy bildirishnoma,
+  sinxrondan keyin barcha qurilmalarda; har telefonda sozlamadan o'chirsa bo'ladi. Hisobda «+30 daq», «+1 soat», «Muddatsiz».
 - **Unutilgan seans** — boshlanish vaqtini boshlashda yoki keyin, tugash vaqtini to'lovda qo'lda kiritish
   ("15 daqiqa oldin" tugmalari yoki aniq soat, 24 soatgacha orqaga).
 - **Savdo** — stolsiz savdo: *tezkor savdo* (darhol to'lanadi) yoki *odam nomiga ochiq hisob*.
@@ -19,8 +24,9 @@ barcha qurilmalari bilan avtomatik sinxronlanadi.
 - **Qarz daftari**, **Kassa (hisobot)**, **Xarajatlar**, **Chek** (rasm sifatida ulashiladi).
 - **Bir nechta qurilma** — egasi va sheriklari bitta biliardxonada ishlaydi: o'zgarishlar 15 soniya ichida
   boshqa telefonlarda ko'rinadi (ochiq stollar ham).
-- **Obuna** — biliardxona uchun oylik to'lov, birinchi marta bepul sinov; muddat tugasa imtiyoz kunlari, keyin
-  faqat ko'rish rejimi (ma'lumot yo'qolmaydi). Kirish, to'lov cheki va promo kod — Telegram bot orqali.
+- **Obuna (balans)** — birinchi marta bepul sinov; keyin har kuni balansdan 30 kunlik narx ÷ 30 yechiladi.
+  Balans tugasa imtiyoz kunlari (balans minusga ketadi), keyin faqat ko'rish rejimi (ma'lumot yo'qolmaydi).
+  Kirish (botda «Ha, bu men» tasdig'i bilan), to'lov cheki va promo kod — Telegram bot orqali.
 
 ## Tuzilma
 
@@ -83,8 +89,9 @@ O'zgaruvchilar:
 | `ADMIN_TELEGRAM_IDS` | admin panel kodi yuboriladigan Telegram ID'lar (vergul bilan); botga `/id` yozib bilinadi |
 
 **Admin panel**: `<PUBLIC_URL>/admin` — kirish kodi botdan keladi (admin avval botga `/start` yozgan bo'lishi kerak).
-Bo'limlar: bosh sahifa, cheklar (summa → kunlar, tasdiqlash/rad etish), biliardxonalar (muddat, qurilma limiti,
-bloklash, chegirma), narxlar (oylik narx, sinov va imtiyoz kunlari, to'lov rekvizitlari), chegirmalar (promo kod va kampaniya).
+Bo'limlar: bosh sahifa, cheklar (tushgan summa → balans, tasdiqlash/rad etish), biliardxonalar (balans ±, sinovni uzaytirish,
+shaxsiy chegirma, qurilma limiti, bloklash, o'chirish), narxlar (30 kunlik narx, sinov va imtiyoz kunlari, to'lov rekvizitlari),
+chegirmalar (promo kod, kampaniya yoki hammaga; muddat oynasi; auditoriya: hamma / yangi / tanlangan biliardxonalar).
 
 ## Tekshiruvlar
 
@@ -118,8 +125,14 @@ Har yangi versiyada `app.json` dagi `version` va `android.versionCode` oshirilad
 - "Tarixni tozalash" serverda bajariladi (faqat egasi): biliardxonaning `data_epoch` i oshadi va barcha qurilmalar
   lokal bazani tozalab, serverdan qaytadan yuklaydi.
 - Ombor qoldig'i hisoblanadi: kirim/sanoq (`stock_moves`) − bekor qilinmagan cheklardagi sotuv.
-- Obuna biliardxonaga bog'liq; narx — oylik narx minus eng katta faol chegirma (chegirmalar qo'shilmaydi).
-  Chek tasdiqlanganda kunlar = summa ÷ chegirmali narx × 30, muddat joriy muddat (sinov ham) ustiga qo'shiladi.
+- Obuna biliardxonaga bog'liq; narx — 30 kunlik narx minus eng katta faol chegirma (chegirmalar qo'shilmaydi).
+  Server soatlik job bilan `paid_through` dan o'tgan har kun uchun kunlik narxni balansdan yechadi; balans minusga
+  o'tsa `debt_since` belgilanadi va imtiyozdan keyin yechish to'xtaydi. Chek tasdiqlanganda faqat summa balansga
+  qo'shiladi (avval qarz yopiladi); taxminiy tugash sanasi balansdan hisoblanadi.
+- Vaqtli seans muddati (`bills.planned_minutes`) narxga ta'sir qilmaydi — o'ynalgan vaqt hisoblanadi.
+  Bildirishnomalar identifikatorida vaqt bor: muddat o'zgarsa eskisi bekor qilinib yangisi rejalashtiriladi.
+  Aniq vaqtda chalinishi uchun `USE_EXACT_ALARM` ruxsati bor (APK GitHub orqali tarqatiladi; Play Store'ga
+  chiqarilsa bu ruxsatni asoslash yoki `SCHEDULE_EXACT_ALARM` ga o'tish kerak).
 - Ish kuni sukut bo'yicha 06:00 da boshlanadi: tungi o'yinlar kechagi kun hisobotiga tushadi (sozlanadi).
 
 ### Yangi migratsiya qo'shish
