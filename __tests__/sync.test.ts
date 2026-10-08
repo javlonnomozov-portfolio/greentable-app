@@ -4,6 +4,7 @@ import {
   cancelBill,
   changeItemQty,
   closeBill,
+  extendPlanned,
   getBillDetail,
   listHall,
   listOpenSales,
@@ -160,6 +161,24 @@ describe('ikki qurilma server orqali', () => {
     expect(server.count('tables')).toBe(5);
     expect(server.count('customers')).toBe(1);
     expect((await listHall(b)).find((t) => t.name === 'VIP')!.hourly_rate).toBe(60000); // A ning nusxasi yangiroq
+  });
+
+  it('joy turi va vaqtli seans muddati boshqa qurilmaga o‘tadi (ovoz u yerda ham rejalashtiriladi)', async () => {
+    const server = fakeServer();
+    const a = await createEmptyDb();
+    const b = await createEmptyDb();
+    const psId = await saveTable(a, { name: 'PS 1', hourly_rate: 20000, kind: 'ps' }, T0);
+    const billId = await startTableSession(a, psId, T0, { plannedMinutes: 60 });
+    await syncOnce(a, server.device('a'));
+    await syncOnce(b, server.device('b'));
+    const psB = (await listHall(b)).find((t) => t.name === 'PS 1')!;
+    expect(psB).toMatchObject({ kind: 'ps', planned_minutes: 60 });
+
+    // B da uzaytirildi → A ga yetadi.
+    await extendPlanned(b, psB.bill_id!, 30, T0 + 55 * MIN);
+    await syncOnce(b, server.device('b'));
+    await syncOnce(a, server.device('a'));
+    expect((await getBillDetail(a, billId))!.bill.planned_minutes).toBe(90);
   });
 
   it('oxirgi o‘zgarish yutadi', async () => {

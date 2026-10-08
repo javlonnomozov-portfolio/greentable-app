@@ -1,13 +1,16 @@
 import { router, useNavigation, type Href } from 'expo-router';
-import { useLayoutEffect } from 'react';
-import { ScrollView, View } from 'react-native';
-import { Divider, IconButton, List } from 'react-native-paper';
+import { useEffect, useLayoutEffect, useState } from 'react';
+import { AppState, Linking, ScrollView, View } from 'react-native';
+import { Divider, IconButton, List, Switch } from 'react-native-paper';
 import { BrandHeader } from '@/components/Brand';
 import { usePin } from '@/components/PinProvider';
 import { STATE_LABEL, SyncBadge } from '@/components/SubscriptionStatus';
 import { isReadOnly, useSync } from '@/components/SyncProvider';
+import { notificationPermission, requestNotificationPermission } from '@/components/TimerAlerts';
 import { PinGate } from '@/components/ui';
+import { useDb, useQuery } from '@/db/hooks';
 import { useSettings } from '@/hooks/useSettings';
+import { getTimerSound, setTimerSound } from '@/services/timerAlerts';
 import { palette } from '@/theme';
 import { formatSom } from '@/utils/money';
 import { formatDate } from '@/utils/time';
@@ -67,7 +70,7 @@ function SettingsMenu() {
       <Divider />
       <List.Section>
         <List.Subheader>Zal</List.Subheader>
-        {item('Stollar', "Nomi va soatlik narxi", 'billiards', '/settings/tables')}
+        {item('Stollar', 'Biliard, PlayStation, kompyuter — nomi va narxi', 'billiards', '/settings/tables')}
         {item('Mahsulotlar', 'Bar/kafe, narxlar va ombor', 'cup-outline', '/settings/products')}
         {item('Xarajat turlari', 'Ijara, maosh, kommunal…', 'shape-outline', '/settings/expense-categories')}
       </List.Section>
@@ -81,6 +84,8 @@ function SettingsMenu() {
           '/settings/general',
         )}
       </List.Section>
+      <Divider />
+      <TimerSoundItem />
       <Divider />
       <List.Section>
         <List.Subheader>Xavfsizlik</List.Subheader>
@@ -103,5 +108,45 @@ function SettingsMenu() {
         </>
       ) : null}
     </ScrollView>
+  );
+}
+
+/** Har bir telefonda alohida: vaqtli seans tugaganda ovozli bildirishnoma. */
+function TimerSoundItem() {
+  const db = useDb();
+  const { data: on } = useQuery((d) => getTimerSound(d), []);
+  const [perm, setPerm] = useState<{ granted: boolean; canAskAgain: boolean } | null>(null);
+
+  // Telefon sozlamalaridan qaytganda ruxsat holati yangilanadi.
+  useEffect(() => {
+    const check = () => notificationPermission().then(setPerm, () => setPerm(null));
+    check();
+    const sub = AppState.addEventListener('change', (st) => st === 'active' && check());
+    return () => sub.remove();
+  }, []);
+
+  const noPerm = on !== false && perm != null && !perm.granted;
+  const fixPerm = async () => {
+    if (perm?.canAskAgain) setPerm({ granted: await requestNotificationPermission(), canAskAgain: true });
+    else Linking.openSettings();
+  };
+
+  return (
+    <List.Section>
+      <List.Subheader>Shu telefon</List.Subheader>
+      <List.Item
+        title="Vaqt tugaganda ovoz"
+        description={
+          noPerm
+            ? 'Bildirishnomaga ruxsat berilmagan — bosing'
+            : 'Vaqtli seans (PS, kompyuter) tugashiga 5 daqiqa qolganda va tugaganda'
+        }
+        descriptionStyle={noPerm ? { color: palette.danger } : undefined}
+        descriptionNumberOfLines={3}
+        left={(p) => <List.Icon {...p} icon="bell-ring-outline" color={noPerm ? palette.danger : p.color} />}
+        right={() => <Switch value={on !== false} onValueChange={(v) => setTimerSound(db, v)} />}
+        onPress={noPerm ? fixPerm : () => setTimerSound(db, on === false)}
+      />
+    </List.Section>
   );
 }

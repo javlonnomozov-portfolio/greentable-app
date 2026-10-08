@@ -1,4 +1,4 @@
-import type { ExpenseCategoryRow, PaymentMethod, ProductRow, TableRow } from '@/db/models';
+import type { ExpenseCategoryRow, PaymentMethod, ProductRow, TableKind, TableRow } from '@/db/models';
 import { NEW_UID, transaction, type Db, type RootDb } from '@/db/types';
 
 export class CatalogError extends Error {}
@@ -16,6 +16,7 @@ export interface TableInput {
   id?: number;
   name: string;
   hourly_rate: number;
+  kind?: TableKind;
 }
 
 export async function saveTable(db: Db, input: TableInput, now = Date.now()): Promise<number> {
@@ -23,9 +24,10 @@ export async function saveTable(db: Db, input: TableInput, now = Date.now()): Pr
   if (!name) throw new CatalogError('Stol nomini kiriting');
   if (input.hourly_rate <= 0) throw new CatalogError('Soatlik narxni kiriting');
   if (input.id) {
-    await db.runAsync('UPDATE tables SET name = ?, hourly_rate = ?, updated_at = ? WHERE id = ?', [
+    await db.runAsync('UPDATE tables SET name = ?, hourly_rate = ?, kind = COALESCE(?, kind), updated_at = ? WHERE id = ?', [
       name,
       input.hourly_rate,
+      input.kind ?? null,
       now,
       input.id,
     ]);
@@ -33,8 +35,8 @@ export async function saveTable(db: Db, input: TableInput, now = Date.now()): Pr
   }
   const max = await db.getFirstAsync<{ m: number | null }>('SELECT MAX(sort_order) AS m FROM tables', []);
   const res = await db.runAsync(
-    `INSERT INTO tables (uid, name, hourly_rate, sort_order, updated_at) VALUES (${NEW_UID}, ?, ?, ?, ?)`,
-    [name, input.hourly_rate, (max?.m ?? 0) + 1, now],
+    `INSERT INTO tables (uid, name, hourly_rate, sort_order, kind, updated_at) VALUES (${NEW_UID}, ?, ?, ?, ?, ?)`,
+    [name, input.hourly_rate, (max?.m ?? 0) + 1, input.kind ?? 'billiard', now],
   );
   return res.lastInsertRowId;
 }

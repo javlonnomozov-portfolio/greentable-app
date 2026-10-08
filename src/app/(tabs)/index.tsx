@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { FlatList, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Button, Chip, Dialog, Portal, Text, TextInput, TouchableRipple } from 'react-native-paper';
 import { CustomerPicker } from '@/components/CustomerPicker';
+import { DurationChips } from '@/components/DurationChips';
 import { QuickSetup } from '@/components/QuickSetup';
 import { SubscriptionBanner } from '@/components/SubscriptionStatus';
 import { useFeedback } from '@/components/FeedbackProvider';
@@ -13,11 +14,11 @@ import { useDb, useQuery } from '@/db/hooks';
 import { useNow } from '@/hooks/useNow';
 import { useSettings } from '@/hooks/useSettings';
 import { useWriteGuard } from '@/hooks/useWriteGuard';
-import { calcTimeCharge } from '@/services/billing';
+import { applyRounding, calcTimeCharge, segmentCharge } from '@/services/billing';
 import { listHall, startTableSession, type HallTable } from '@/services/bills';
 import { palette } from '@/theme';
 import { formatSom } from '@/utils/money';
-import { formatAgo, formatTime } from '@/utils/time';
+import { formatAgo, formatMinutes, formatTime } from '@/utils/time';
 
 /** Gridning oxiridagi "Stol qo'shish" kartasi. */
 const ADD_TILE = 'add' as const;
@@ -40,6 +41,8 @@ export default function HallScreen() {
   /** null — o'yin hozir boshlanadi; aks holda admin kiritgan haqiqiy boshlanish vaqti. */
   const [startAt, setStartAt] = useState<number | null>(null);
   const [pickingTime, setPickingTime] = useState(false);
+  /** Vaqtli seans muddati, daqiqa (null — cheksiz). */
+  const [planned, setPlanned] = useState<number | null>(null);
 
   const columns = width >= 1000 ? 4 : width >= 680 ? 3 : 2;
   const list = tables ?? [];
@@ -54,6 +57,7 @@ export default function HallScreen() {
     setLabel('');
     setCustomer(null);
     setStartAt(null);
+    setPlanned(null);
     setStarting(table);
   };
 
@@ -67,8 +71,9 @@ export default function HallScreen() {
           customerId: customer?.id ?? null,
           label,
           startedAt: startAt ?? undefined,
+          plannedMinutes: planned,
         }),
-      startAt ? `${table.name}: ${formatTime(startAt)} dan boshlandi` : `${table.name} boshlandi`,
+      `${table.name} ${startAt ? `${formatTime(startAt)} dan ` : ''}boshlandi${planned ? ` · ${formatMinutes(planned)}` : ''}`,
     );
   };
 
@@ -141,6 +146,14 @@ export default function HallScreen() {
             {startAt ? (
               <Text variant="bodySmall" style={{ color: palette.paused, textAlign: 'center' }}>
                 {formatAgo(now - startAt)} — vaqt shundan hisoblanadi
+              </Text>
+            ) : null}
+            <Text variant="labelLarge">Muddat</Text>
+            <DurationChips value={planned} onChange={setPlanned} />
+            {planned ? (
+              <Text variant="bodySmall" style={{ color: palette.timer }}>
+                {formatMinutes(planned)} ≈ {formatSom(applyRounding(segmentCharge(planned * 60_000, starting?.hourly_rate ?? 0), rounding))}
+                {' '}— vaqt tugaganda ovozli xabar beriladi
               </Text>
             ) : null}
             {customer ? (

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, Chip, Dialog, Divider, IconButton, Menu, Portal, Text, TextInput, useTheme } from 'react-native-paper';
 import { CustomerPicker } from '@/components/CustomerPicker';
+import { DurationChips } from '@/components/DurationChips';
 import { useFeedback } from '@/components/FeedbackProvider';
 import { usePin } from '@/components/PinProvider';
 import { ProductPicker } from '@/components/ProductPicker';
@@ -12,23 +13,25 @@ import { useDb, useQuery } from '@/db/hooks';
 import { useWriteGuard } from '@/hooks/useWriteGuard';
 import { useNow } from '@/hooks/useNow';
 import { useSettings } from '@/hooks/useSettings';
-import { calcElapsedMs } from '@/services/billing';
+import { WARN_BEFORE_MS, calcElapsedMs, remainingMs } from '@/services/billing';
 import {
   addItem,
   cancelBill,
   changeItemQty,
   computeTotals,
+  extendPlanned,
   getBillDetail,
   listHall,
   moveSession,
   pauseSession,
   resumeSession,
   setBillCustomer,
+  setPlannedMinutes,
   setSessionStart,
 } from '@/services/bills';
 import { palette } from '@/theme';
 import { formatSom } from '@/utils/money';
-import { formatDuration, formatTime } from '@/utils/time';
+import { formatDuration, formatMinutes, formatTime } from '@/utils/time';
 
 /** Ochiq seans birinchi daqiqalarda PINsiz bekor qilinishi mumkin (xato bosilgan bo'lsa). */
 const FREE_CANCEL_MS = 3 * 60_000;
@@ -51,6 +54,8 @@ export default function BillScreen() {
   const [renaming, setRenaming] = useState(false);
   const [labelDraft, setLabelDraft] = useState('');
   const [editingStart, setEditingStart] = useState(false);
+  const [planning, setPlanning] = useState(false);
+  const [plannedDraft, setPlannedDraft] = useState<number | null>(60);
 
   useEffect(() => {
     if (detail && detail.bill.status !== 'open') {
@@ -65,6 +70,9 @@ export default function BillScreen() {
   const isTable = bill.kind === 'table';
   const paused = bill.paused_at != null;
   const totals = computeTotals(detail, now, rounding);
+  const remaining = isTable ? remainingMs(bill, now) : null;
+  const over = remaining != null && remaining <= 0;
+  const soon = remaining != null && !over && remaining <= WARN_BEFORE_MS;
   const title = isTable ? (table?.name ?? 'Stol') : (customer?.name ?? bill.label ?? `Savdo #${bill.id}`);
 
   const act = (fn: () => Promise<unknown>) => run(fn).then(reload);
@@ -106,7 +114,7 @@ export default function BillScreen() {
       />
       <ScrollView contentContainerStyle={styles.content}>
         {isTable && totals.time && (
-          <Card mode="contained" style={{ backgroundColor: paused ? palette.pausedBg : palette.busyBg }}>
+          <Card mode="contained" style={{ backgroundColor: over ? palette.dangerBg : paused ? palette.pausedBg : palette.busyBg }}>
             <Card.Content style={styles.timerCard}>
               <Text variant="displayMedium" style={[styles.timer, { color: palette.timer, opacity: paused ? 0.6 : 1 }]}>
                 {formatDuration(calcElapsedMs(bill, now))}
@@ -121,6 +129,30 @@ export default function BillScreen() {
               <Text variant="headlineSmall" style={styles.bold}>
                 {formatSom(totals.time.amount)}
               </Text>
+              {remaining != null && bill.planned_minutes != null ? (
+                <Text variant="titleMedium" style={[styles.timer, { color: over ? palette.danger : soon ? palette.paused : palette.muted }]}>
+                  {over ? `Vaqt tugadi: +${formatDuration(-remaining)}` : `Qoldi: ${formatDuration(remaining)}`} · {formatMinutes(bill.planned_minutes)}
+                </Text>
+              ) : null}
+              <View style={styles.planRow}>
+                {bill.planned_minutes != null ? (
+                  <>
+                    <Chip compact icon="plus" onPress={guard(() => act(() => extendPlanned(db, billId, 30, Date.now())))}>
+                      30 daq
+                    </Chip>
+                    <Chip compact icon="plus" onPress={guard(() => act(() => extendPlanned(db, billId, 60, Date.now())))}>
+                      1 soat
+                    </Chip>
+                    <Chip compact icon="timer-off-outline" onPress={guard(() => act(() => setPlannedMinutes(db, billId, null, Date.now())))}>
+                      Muddatsiz
+                    </Chip>
+                  </>
+                ) : (
+                  <Chip compact icon="timer-sand" onPress={guard(() => { setPlannedDraft(60); setPlanning(true); })}>
+                    Muddat belgilash
+                  </Chip>
+                )}
+              </View>
               <Button
                 mode="contained"
                 icon={paused ? 'play' : 'pause'}
@@ -249,6 +281,27 @@ export default function BillScreen() {
         }}
       />
       <Portal>
+        <Dialog visible={planning} onDismiss={() => setPlanning(false)}>
+          <Dialog.Title>Seans muddati</Dialog.Title>
+          <Dialog.Content style={styles.moveList}>
+            <Text variant="bodySmall" style={styles.muted}>
+              Boshlanishdan hisoblanadi (hozirgacha {formatMinutes(Math.ceil(calcElapsedMs(bill, now) / 60_000))} o'ynaldi)
+            </Text>
+            <DurationChips value={plannedDraft} onChange={setPlannedDraft} />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setPlanning(false)}>Bekor</Button>
+            <Button
+              mode="contained"
+              onPress={() => {
+                setPlanning(false);
+                act(() => setPlannedMinutes(db, billId, plannedDraft, Date.now()));
+              }}
+            >
+              Saqlash
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
         <Dialog visible={renaming} onDismiss={() => setRenaming(false)}>
           <Dialog.Title>Hisob nomi</Dialog.Title>
           <Dialog.Content>
@@ -311,6 +364,7 @@ const styles = StyleSheet.create({
   timerCard: { alignItems: 'center', gap: 4, paddingVertical: 8 },
   timer: { fontVariant: ['tabular-nums'], fontWeight: '700' },
   pauseBtn: { marginTop: 8, alignSelf: 'stretch' },
+  planRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginTop: 4 },
   who: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   item: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 4 },
   itemInfo: { flex: 1 },

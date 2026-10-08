@@ -58,7 +58,13 @@ export async function applyChanges(txn: Db, rows: SyncChange[], opts: ApplyOptio
   const fieldsFor = async (tbl: SyncTable, d: Rec): Promise<Record<string, BindValue>> => {
     switch (tbl) {
       case 'tables':
-        return { name: str(d.name) ?? 'Stol', hourly_rate: num(d.hourly_rate), is_active: num(d.is_active), sort_order: num(d.sort_order) };
+        return {
+          name: str(d.name) ?? 'Stol',
+          hourly_rate: num(d.hourly_rate),
+          is_active: num(d.is_active),
+          sort_order: num(d.sort_order),
+          kind: d.kind === 'ps' || d.kind === 'pc' || d.kind === 'other' ? d.kind : 'billiard',
+        };
       case 'products':
         return {
           name: str(d.name) ?? 'Mahsulot',
@@ -95,6 +101,7 @@ export async function applyChanges(txn: Db, rows: SyncChange[], opts: ApplyOptio
           debt_amount: num(d.debt_amount),
           closed_at: optNum(d.closed_at),
           cancel_reason: str(d.cancel_reason),
+          planned_minutes: optNum(d.planned_minutes),
         };
       case 'bill_items':
         return {

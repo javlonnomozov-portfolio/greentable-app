@@ -26,14 +26,14 @@ export const isSyncTable = (t: string): t is SyncTable => (TABLE_ORDER as readon
 
 /** Qatorni uid bo'yicha o'qiydigan so'rovlar (havolalar uid'ga almashtirilgan). */
 const SELECT: Record<SyncTable, string> = {
-  tables: 'SELECT uid, name, hourly_rate, is_active, sort_order, updated_at FROM tables WHERE uid = ?',
+  tables: 'SELECT uid, name, hourly_rate, is_active, sort_order, kind, updated_at FROM tables WHERE uid = ?',
   products: 'SELECT uid, name, category, price, track_stock, is_active, updated_at FROM products WHERE uid = ?',
   expense_categories: 'SELECT uid, name, is_active, updated_at FROM expense_categories WHERE uid = ?',
   customers: 'SELECT uid, name, phone, note, created_at, updated_at FROM customers WHERE uid = ?',
   bills: `SELECT b.uid, b.kind, t.uid AS table_uid, c.uid AS customer_uid, b.label, b.status, b.started_at, b.ended_at,
             b.paused_at, b.paused_ms, b.carried_ms, b.carried_amount, b.hourly_rate, b.time_minutes, b.time_amount,
             b.items_amount, b.discount, b.rounding_adj, b.total, b.paid_amount, b.debt_amount, b.closed_at,
-            b.cancel_reason, b.updated_at
+            b.cancel_reason, b.planned_minutes, b.updated_at
           FROM bills b
           LEFT JOIN tables t ON t.id = b.table_id
           LEFT JOIN customers c ON c.id = b.customer_id

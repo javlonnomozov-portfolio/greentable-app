@@ -2,12 +2,16 @@ export type PaymentMethod = 'cash' | 'card' | 'transfer';
 export type BillKind = 'table' | 'sale';
 export type BillStatus = 'open' | 'closed' | 'cancelled';
 
+/** Joy turi: belgi va tez tanlanadigan muddatlar uchun. */
+export type TableKind = 'billiard' | 'ps' | 'pc' | 'other';
+
 export interface TableRow {
   id: number;
   name: string;
   hourly_rate: number;
   is_active: number;
   sort_order: number;
+  kind: TableKind;
 }
 
 export interface ProductRow {
@@ -56,6 +60,8 @@ export interface BillRow {
   debt_amount: number;
   closed_at: number | null;
   cancel_reason: string | null;
+  /** Oldindan belgilangan muddat (daqiqa). null — cheksiz. */
+  planned_minutes: number | null;
 }
 
 export interface BillItemRow {

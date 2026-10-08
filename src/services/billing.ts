@@ -34,6 +34,21 @@ export function calcElapsedMs(t: TimerState, now: number): number {
   return t.carried_ms + calcSegmentMs(t, now);
 }
 
+/** Vaqtli seansda ogohlantirish shuncha oldin beriladi. */
+export const WARN_BEFORE_MS = 5 * MINUTE;
+
+/** Vaqtli seans: qolgan vaqt (manfiy — ortiqcha o'ynalgan). Muddatsiz seansda null. */
+export function remainingMs(t: TimerState & { planned_minutes: number | null }, now: number): number | null {
+  if (t.planned_minutes == null) return null;
+  return t.planned_minutes * MINUTE - calcElapsedMs(t, now);
+}
+
+/** Muddat tugaydigan vaqt (pauzada — noma'lum, null). */
+export function plannedEndAt(t: TimerState & { planned_minutes: number | null }, now: number): number | null {
+  const rem = remainingMs(t, now);
+  return rem == null || t.paused_at != null ? null : now + rem;
+}
+
 /** Boshlangan har bir daqiqa to'liq hisoblanadi. */
 export function billableMinutes(ms: number): number {
   return Math.ceil(ms / MINUTE);

@@ -6,6 +6,7 @@ import {
   cancelBill,
   changeItemQty,
   closeBill,
+  extendPlanned,
   getBillDetail,
   listHall,
   listOpenSales,
@@ -13,6 +14,7 @@ import {
   openSale,
   pauseSession,
   resumeSession,
+  setPlannedMinutes,
   setSessionStart,
   startTableSession,
 } from '@/services/bills';
@@ -143,6 +145,32 @@ describe('stol seansi', () => {
     expect(res.total).toBe(40000);
     const bill = (await getBillDetail(db, billId))!.bill;
     expect(bill).toMatchObject({ ended_at: T0 + 70 * MIN, closed_at: T0 + 90 * MIN, time_minutes: 80 });
+  });
+
+  it('vaqtli seans (PS): muddat belgilanadi, uzaytiriladi, olib tashlanadi', async () => {
+    await saveTable(db, { name: 'PS 1', hourly_rate: 20000, kind: 'ps' }, T0);
+    const ps = (await listHall(db)).find((t) => t.name === 'PS 1')!;
+    expect(ps.kind).toBe('ps');
+    expect((await listHall(db)).find((t) => t.id === 1)!.kind).toBe('billiard');
+
+    const billId = await startTableSession(db, ps.id, T0, { plannedMinutes: 60 });
+    expect((await listHall(db)).find((t) => t.id === ps.id)).toMatchObject({ bill_id: billId, planned_minutes: 60 });
+    await extendPlanned(db, billId, 30, T0 + 50 * MIN);
+    expect((await getBillDetail(db, billId))!.bill.planned_minutes).toBe(90);
+
+    // Muddatsiz qilindi, keyin yana uzaytirildi — o'ynalgan vaqtdan (to'liq daqiqalarda) boshlab.
+    await setPlannedMinutes(db, billId, null, T0 + 60 * MIN);
+    expect((await getBillDetail(db, billId))!.bill.planned_minutes).toBeNull();
+    await extendPlanned(db, billId, 60, T0 + 70 * MIN + 10_000);
+    expect((await getBillDetail(db, billId))!.bill.planned_minutes).toBe(131);
+
+    await expect(setPlannedMinutes(db, billId, 0, T0)).rejects.toThrow("Muddat noto'g'ri");
+    await expect(startTableSession(db, 2, T0, { plannedMinutes: 1.5 })).rejects.toThrow("Muddat noto'g'ri");
+
+    // Muddat narxga ta'sir qilmaydi: o'ynalgan vaqt hisoblanadi (ortiqcha vaqt ham).
+    const res = await closeBill(db, billId, { now: T0 + 150 * MIN, rounding, payment: cash(50000), customerId: null });
+    expect(res).toMatchObject({ total: 50000, debt: 0 });
+    await expect(setPlannedMinutes(db, billId, 30, T0)).rejects.toThrow('yopilgan');
   });
 
   it('yakuniy summani admin o‘zgartiradi: chegirma yoki ustama', async () => {

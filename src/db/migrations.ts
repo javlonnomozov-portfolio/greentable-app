@@ -307,6 +307,12 @@ const MIGRATIONS: string[] = [
 
   ${SYNC_TABLES.map(([t, uid]) => `INSERT INTO sync_outbox (tbl, uid) SELECT '${t}', ${uid} FROM ${t};`).join('\n')}
   `,
+
+  // 4: vaqtli seans (PS, kompyuter — oldindan belgilangan muddat) va joy turlari.
+  `
+  ALTER TABLE bills ADD COLUMN planned_minutes INTEGER;
+  ALTER TABLE tables ADD COLUMN kind TEXT NOT NULL DEFAULT 'billiard';
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

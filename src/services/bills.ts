@@ -1,6 +1,7 @@
 import type { BillItemRow, BillRow, CustomerRow, TableRow } from '@/db/models';
 import { NEW_UID, transaction, type Db, type RootDb } from '@/db/types';
 import {
+  calcElapsedMs,
   calcSegmentMs,
   calcTimeCharge,
   segmentCharge,
@@ -34,6 +35,8 @@ export interface OpenBillOptions {
   label?: string | null;
   /** Admin seansni kiritishni unutgan bo'lsa — haqiqiy boshlanish vaqti. Bo'lmasa `now`. */
   startedAt?: number;
+  /** Vaqtli seans (PS, kompyuter): oldindan olingan muddat, daqiqa. */
+  plannedMinutes?: number | null;
 }
 
 export async function startTableSession(
@@ -53,9 +56,9 @@ export async function startTableSession(
     const startedAt = opts.startedAt ?? now;
     checkStartTime(startedAt, now);
     const res = await txn.runAsync(
-      `INSERT INTO bills (uid, kind, table_id, customer_id, label, started_at, hourly_rate, updated_at)
-       VALUES (${NEW_UID}, 'table', ?, ?, ?, ?, ?, ?)`,
-      [tableId, opts.customerId ?? null, opts.label?.trim() || null, startedAt, table.hourly_rate, now],
+      `INSERT INTO bills (uid, kind, table_id, customer_id, label, started_at, hourly_rate, planned_minutes, updated_at)
+       VALUES (${NEW_UID}, 'table', ?, ?, ?, ?, ?, ?, ?)`,
+      [tableId, opts.customerId ?? null, opts.label?.trim() || null, startedAt, table.hourly_rate, checkPlanned(opts.plannedMinutes), now],
     );
     return res.lastInsertRowId;
   });
@@ -83,6 +86,29 @@ export async function resumeSession(db: Db, billId: number, now: number): Promis
     Math.max(0, now - bill.paused_at),
     billId,
   ]);
+}
+
+const checkPlanned = (minutes: number | null | undefined): number | null => {
+  if (minutes == null) return null;
+  if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 24 * 60) throw new BillError("Muddat noto'g'ri");
+  return minutes;
+};
+
+/** Vaqtli seans muddatini o'zgartirish (null — muddatsiz). */
+export async function setPlannedMinutes(db: Db, billId: number, minutes: number | null, now: number): Promise<void> {
+  const bill = await getOpenBill(db, billId);
+  if (bill.kind !== 'table') throw new BillError('Bu stol seansi emas');
+  await db.runAsync('UPDATE bills SET planned_minutes = ?, updated_at = ? WHERE id = ?', [checkPlanned(minutes), now, billId]);
+}
+
+/**
+ * Muddatni uzaytirish: belgilangan muddatga qo'shiladi. Muddatsiz seansda — hozirgacha o'ynalgan vaqtdan
+ * (to'liq daqiqalarda) boshlab hisoblanadi.
+ */
+export async function extendPlanned(db: Db, billId: number, addMinutes: number, now: number): Promise<void> {
+  const bill = await getOpenBill(db, billId);
+  const base = bill.planned_minutes ?? Math.ceil(calcElapsedMs(bill, now) / 60_000);
+  await setPlannedMinutes(db, billId, base + addMinutes, now);
 }
 
 /** Ochiq seansning boshlanish vaqtini tuzatish (o'yin oldinroq boshlangan, lekin kiritilmagan bo'lsa). */
@@ -369,6 +395,7 @@ export interface HallTable extends TableRow {
   carried_amount: number;
   bill_rate: number | null;
   label: string | null;
+  planned_minutes: number | null;
   customer_name: string | null;
   items_amount: number;
 }
@@ -377,7 +404,7 @@ export async function listHall(db: Db): Promise<HallTable[]> {
   return db.getAllAsync<HallTable>(
     `SELECT t.*, b.id AS bill_id, b.started_at, NULL AS ended_at, b.paused_at,
        COALESCE(b.paused_ms, 0) AS paused_ms, COALESCE(b.carried_ms, 0) AS carried_ms,
-       COALESCE(b.carried_amount, 0) AS carried_amount, b.hourly_rate AS bill_rate, b.label,
+       COALESCE(b.carried_amount, 0) AS carried_amount, b.hourly_rate AS bill_rate, b.label, b.planned_minutes,
        c.name AS customer_name,
        COALESCE((SELECT SUM(qty * unit_price) FROM bill_items WHERE bill_id = b.id), 0) AS items_amount
      FROM tables t

@@ -10,6 +10,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { FeedbackProvider } from '@/components/FeedbackProvider';
 import { PinProvider } from '@/components/PinProvider';
 import { SyncProvider, useSync } from '@/components/SyncProvider';
+import { TimerAlerts } from '@/components/TimerAlerts';
 import { DB_NAME } from '@/db/hooks';
 import { migrate } from '@/db/migrations';
 import { palette, theme } from '@/theme';
@@ -68,6 +69,7 @@ export default function RootLayout() {
                 <PinProvider>
                   <SyncProvider>
                     <AppStack />
+                    <TimerAlerts />
                   </SyncProvider>
                 </PinProvider>
               </FeedbackProvider>
