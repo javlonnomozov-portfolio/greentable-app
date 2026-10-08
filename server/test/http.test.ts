@@ -9,6 +9,7 @@ import { confirmLogin } from '../src/services/auth.ts';
 import { createReceipt } from '../src/services/billing.ts';
 import { createHall } from '../src/services/halls.ts';
 import { updatePricing } from '../src/services/pricing.ts';
+import { getUser } from '../src/services/users.ts';
 import { at, makeUser, testDb, T0 } from './helpers.ts';
 
 let database: Database;
@@ -168,6 +169,26 @@ describe('admin panel API', () => {
 
     const detail = await (await app.request(`/admin/api/halls/${hall.id}`, json('GET', undefined, undefined, cookie))).json();
     expect(detail.events.map((e: { kind: string }) => e.kind)).toEqual(expect.arrayContaining(['trial', 'discount', 'payment']));
+  });
+});
+
+describe('admin: biliardxonani o‘chirish', () => {
+  it('qurilma chiqib ketadi, cheklar va tarix o‘chadi, sinov huquqi qaytadi', async () => {
+    expect((await app.request('/admin/api/auth/request', json('POST', {}))).status).toBe(200);
+    const code = /<b>(\d{6})<\/b>/.exec(notifier.sent.find((m) => m.to === 777)!.html)![1];
+    const cookie = (await app.request('/admin/api/auth/verify', json('POST', { code }))).headers.get('set-cookie')!.split(';')[0];
+
+    const { token, hall, owner } = await login('install-del-1');
+    const r = await createReceipt(database.db, { hallId: hall.id, userId: owner.id, fileId: 'F', fileKind: 'photo', mimeType: null, caption: null }, clock);
+    await app.request(`/admin/api/receipts/${r.id}/approve`, json('POST', { amount: 90_000, days: 30 }, undefined, cookie));
+
+    const del = await app.request(`/admin/api/halls/${hall.id}`, json('DELETE', { resetTrial: true }, undefined, cookie));
+    expect(del.status).toBe(200);
+    expect((await app.request('/api/me', json('GET', undefined, token))).status).toBe(401);
+    expect((await app.request(`/admin/api/halls/${hall.id}`, json('GET', undefined, undefined, cookie))).status).toBe(404);
+
+    const again = await createHall(database.db, (await getUser(database.db, owner.id))!, 'Haqiqiy nom', clock);
+    expect(again.trialEndsAt).not.toBeNull();
   });
 });
 

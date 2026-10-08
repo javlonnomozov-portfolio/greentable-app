@@ -86,7 +86,7 @@ describe('kirish va qurilmalar', () => {
 
     // Muddati o'tgan so'rov tasdiqlanmaydi.
     const late = await startLogin(db, { installId: 'x' }, T0);
-    expect(await confirmLogin(db, late.token, u.id, hall.id, new Date(T0.getTime() + 6 * 60_000))).toBe(false);
+    expect(await confirmLogin(db, late.token, u.id, hall.id, new Date(T0.getTime() + 16 * 60_000))).toBe(false);
 
     // Limit 2: shu o'rnatishdan qayta kirish hisoblanmaydi.
     expect(await hasDeviceSlot(db, hall, 'phone-1')).toBe(true);

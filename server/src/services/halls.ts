@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNotNull, isNull, ne } from 'drizzle-orm';
+import { and, asc, eq, gt, isNotNull, isNull, ne, or } from 'drizzle-orm';
 import type { Db } from '../db/client.ts';
 import { devices, hallMembers, halls, invites, subscriptionEvents, users, type Role } from '../db/schema.ts';
 import { addDays } from './billing-math.ts';
@@ -133,6 +133,29 @@ export async function acceptInvite(db: Db, code: string, user: User, now: Date):
     await tx.update(invites).set({ usedBy: user.id, usedAt: now }).where(eq(invites.code, code));
     await tx.update(users).set({ activeHallId: hall.id }).where(eq(users.id, user.id));
     return { ok: true, hall, already: false };
+  });
+}
+
+/**
+ * Admin: biliardxonani butunlay o'chiradi — a'zolar, qurilmalar, cheklar, sinxron ma'lumot va tarix ham
+ * (`ON DELETE CASCADE`). `resetTrial` — egasi (va shu telefon raqamli akkauntlar) qaytadan sinov oladi.
+ */
+export async function deleteHall(db: Db, hallId: string, opts: { resetTrial: boolean }): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [hall] = await tx.select().from(halls).where(eq(halls.id, hallId)).for('update');
+    if (!hall) return false;
+    const [owner] = await tx.select().from(users).where(eq(users.id, hall.ownerUserId));
+    await tx.update(users).set({ activeHallId: null }).where(eq(users.activeHallId, hallId));
+    // Eventlar cheklarga havola qiladi — avval ular, keyin biliardxona (qolgani kaskad bilan).
+    await tx.delete(subscriptionEvents).where(eq(subscriptionEvents.hallId, hallId));
+    await tx.delete(halls).where(eq(halls.id, hallId));
+    if (opts.resetTrial && owner) {
+      await tx
+        .update(users)
+        .set({ trialUsedAt: null })
+        .where(owner.phone ? or(eq(users.id, owner.id), eq(users.phone, owner.phone)) : eq(users.id, owner.id));
+    }
+    return true;
   });
 }
 

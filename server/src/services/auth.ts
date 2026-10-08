@@ -5,7 +5,7 @@ import { getHall, memberRole, type Device, type Hall } from './halls.ts';
 import { getUser, type User } from './users.ts';
 import { randomToken, sha256 } from './util.ts';
 
-export const LOGIN_TTL_MS = 5 * 60_000;
+export const LOGIN_TTL_MS = 15 * 60_000;
 const SEEN_THROTTLE_MS = 5 * 60_000;
 
 export type LoginRequest = typeof loginRequests.$inferSelect;

@@ -17,7 +17,7 @@ import {
   toSubscriptionInfo,
 } from '../services/billing.ts';
 import { attachDiscount, createDiscount, discountLabel, listDiscounts, updateDiscount } from '../services/discounts.ts';
-import { activeDevices, deviceLimit, getHall, revokeDevice } from '../services/halls.ts';
+import { activeDevices, deleteHall, deviceLimit, getHall, revokeDevice } from '../services/halls.ts';
 import { getPricing, updatePricing } from '../services/pricing.ts';
 import { displayName } from '../services/users.ts';
 import { escapeHtml, formatDate, formatSom, rateLimiter } from '../services/util.ts';
@@ -234,6 +234,13 @@ export function adminRoutes(deps: AppDeps) {
     if (!body.ok) return fail(c, 400, body.message);
     const [row] = await db.update(halls).set(body.data).where(eq(halls.id, c.req.param('id'))).returning();
     return row ? c.json(row) : fail(c, 404, 'Topilmadi');
+  });
+
+  app.delete('/halls/:id', async (c) => {
+    const body = await readJson(c, z.object({ resetTrial: z.boolean() }));
+    if (!body.ok) return fail(c, 400, body.message);
+    const ok = await deleteHall(db, c.req.param('id'), body.data);
+    return ok ? c.json({ ok: true }) : fail(c, 404, 'Topilmadi');
   });
 
   app.post('/halls/:id/subscription', async (c) => {

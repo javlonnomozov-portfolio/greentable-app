@@ -3,9 +3,11 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   Grid,
   Group,
   Loader,
+  Modal,
   NumberInput,
   Select,
   Stack,
@@ -18,6 +20,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
+import { useLocation } from 'wouter';
 import { api, type Discount, type HallDetail as Data } from '../api.ts';
 import { STATE, date, dateInputToIso, dateTime, isoToDateInput, som, tgLink } from '../format.ts';
 
@@ -38,6 +41,56 @@ function Section({ title, children, right }: { title: string; children: ReactNod
       </Group>
       {children}
     </Card>
+  );
+}
+
+/** Test yoki keraksiz biliardxonani butunlay o'chirish: nomini yozib tasdiqlanadi. */
+function DeleteHall({ id, name }: { id: string; name: string }) {
+  const qc = useQueryClient();
+  const [, navigate] = useLocation();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [resetTrial, setResetTrial] = useState(true);
+  const del = useMutation({
+    mutationFn: () => api(`/halls/${id}`, { method: 'DELETE', body: { resetTrial } }),
+    onSuccess: () => {
+      notifications.show({ message: `«${name}» o'chirildi`, color: 'emerald' });
+      qc.invalidateQueries({ queryKey: ['halls'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      navigate('/halls');
+    },
+    onError: (e) => notifications.show({ message: e.message, color: 'red' }),
+  });
+  return (
+    <>
+      <Card withBorder style={{ borderColor: 'var(--mantine-color-red-9)' }}>
+        <Group justify="space-between">
+          <div>
+            <Title order={5} c="red.5">Biliardxonani o'chirish</Title>
+            <Text size="sm" c="dimmed">Qurilmalar, cheklar, sinxron ma'lumot va tarix butunlay o'chadi. Qaytarib bo'lmaydi.</Text>
+          </div>
+          <Button color="red" variant="light" onClick={() => setOpen(true)}>
+            O'chirish
+          </Button>
+        </Group>
+      </Card>
+      <Modal opened={open} onClose={() => setOpen(false)} title="Biliardxonani o'chirish">
+        <Stack>
+          <Text size="sm">
+            Tasdiqlash uchun nomini yozing: <b>{name}</b>
+          </Text>
+          <TextInput value={typed} onChange={(e) => setTyped(e.currentTarget.value)} />
+          <Checkbox
+            label="Egasining sinov huquqini qaytarish (qayta ro'yxatdan o'tsa yana bepul sinov oladi)"
+            checked={resetTrial}
+            onChange={(e) => setResetTrial(e.currentTarget.checked)}
+          />
+          <Button color="red" disabled={typed.trim() !== name.trim()} loading={del.isPending} onClick={() => del.mutate()}>
+            Butunlay o'chirish
+          </Button>
+        </Stack>
+      </Modal>
+    </>
   );
 }
 
@@ -206,6 +259,8 @@ export function HallDetail({ id }: { id: string }) {
           })
         )}
       </Section>
+
+      <DeleteHall id={id} name={hall.name} />
 
       <Section title="Tarix">
         <Table.ScrollContainer minWidth={600}>

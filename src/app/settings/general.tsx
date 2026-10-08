@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Chip, IconButton, SegmentedButtons, Text, TextInput } from 'react-native-paper';
 import { useFeedback } from '@/components/FeedbackProvider';
@@ -26,6 +26,27 @@ function GeneralEditor() {
   const { run } = useFeedback();
   // Tahrirlanayotgan paytdagi qiymat; null bo'lsa saqlangan nom ko'rsatiladi.
   const [hallDraft, setHallDraft] = useState<string | null>(null);
+  const draftRef = useRef<string | null>(null);
+  useEffect(() => {
+    draftRef.current = hallDraft;
+  }, [hallDraft]);
+
+  const saveName = async () => {
+    const draft = draftRef.current;
+    if (draft == null) return;
+    draftRef.current = null;
+    await run(() => setSetting(db, 'hall_name', draft.trim() || 'Biliard klub'));
+    setHallDraft(null);
+  };
+
+  // Klaviaturani yopmasdan orqaga chiqilsa ham nom yo'qolmasin.
+  useEffect(
+    () => () => {
+      const draft = draftRef.current;
+      if (draft != null) setSetting(db, 'hall_name', draft.trim() || 'Biliard klub').catch(() => undefined);
+    },
+    [db],
+  );
 
   const { step, mode } = settings.rounding;
   // Namuna: 30 000 so'mlik stolda 47 daqiqa.
@@ -38,12 +59,13 @@ function GeneralEditor() {
       <TextInput
         mode="outlined"
         value={hallDraft ?? settings.hallName}
-        onChangeText={setHallDraft}
-        onBlur={async () => {
-          if (hallDraft == null) return;
-          await run(() => setSetting(db, 'hall_name', hallDraft.trim() || 'Biliard klub'));
-          setHallDraft(null);
+        onChangeText={(v) => {
+          draftRef.current = v;
+          setHallDraft(v);
         }}
+        onBlur={saveName}
+        onSubmitEditing={saveName}
+        returnKeyType="done"
       />
 
       <SectionTitle>Stol vaqti summasini yaxlitlash</SectionTitle>
