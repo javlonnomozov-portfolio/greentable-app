@@ -33,7 +33,7 @@ For anything except rebuilding the same version:
 From the repo root in Git Bash. Builds take many minutes, so run in the background and wait for the notification:
 
 ```bash
-bash .claude/skills/android-release/scripts/eas-build.sh --install --release   # EAS → dist/greentable-<version>.apk → phone → GitHub
+bash .claude/skills/android-release/scripts/eas-build.sh --install --release   # EAS → dist/greentable-<version>.apk → phone → GitHub (greentable.apk)
 bash .claude/skills/android-release/scripts/eas-build.sh --id <build-id>       # resume waiting for a build already started
 bash .claude/skills/android-release/scripts/build-apk.sh --check               # local: only report what's installed/missing
 bash .claude/skills/android-release/scripts/build-apk.sh --install --release   # local build instead of EAS
@@ -45,6 +45,12 @@ URL — share it with the user while they wait. `--install` needs the phone conn
 
 When `--release` finishes it prints the release URL
 (`https://github.com/javlonnomozov-portfolio/greentable-app/releases/tag/v<version>`). Send that link to the user.
+
+The release asset is always named **`greentable.apk`** and the release is marked latest, so the permanent link
+`https://github.com/javlonnomozov-portfolio/greentable-app/releases/latest/download/greentable.apk` always serves the
+newest version. The Telegram bot sends this link (`APP_URL` in `server/src/index.ts`) — keep the name unchanged.
+`gh release create` tags the default branch's HEAD, so merge into `master` and push before releasing. Older releases
+are hidden by turning them into drafts (`gh release edit v1.0.0 --draft`), not deleted.
 
 ## What is where
 

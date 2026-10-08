@@ -117,13 +117,16 @@ if [ "$RELEASE" = 1 ]; then
   log "GitHub release v$APP_VERSION"
   GH="$(command -v gh || echo "$HOMEW/.local/gh/bin/gh.exe")"
   "$GH" auth status >/dev/null 2>&1 || fail "gh login qilinmagan: $GH auth login --web"
+  # Doimiy nom: bot va qo'llanmadagi havola .../releases/latest/download/greentable.apk har doim oxirgi versiyani beradi.
+  STABLE="$DIST/greentable.apk"
+  cp "$APK_OUT" "$STABLE"
   if "$GH" release view "v$APP_VERSION" >/dev/null 2>&1; then
-    "$GH" release upload "v$APP_VERSION" "$(W "$APK_OUT")" --clobber
+    "$GH" release upload "v$APP_VERSION" "$(W "$STABLE")" --clobber
     ok "mavjud release'ga APK qayta yuklandi"
   else
     NOTES="$DIST/release-notes.md"
-    [ -f "$NOTES" ] || printf "GreenTable %s\n\nO'rnatish: greentable-%s.apk faylini telefonga yuklab oching.\n" "$APP_VERSION" "$APP_VERSION" > "$NOTES"
-    "$GH" release create "v$APP_VERSION" "$(W "$APK_OUT")" --title "GreenTable $APP_VERSION" --notes-file "$(W "$NOTES")"
+    [ -f "$NOTES" ] || printf "GreenTable %s\n\nO'rnatish: greentable.apk faylini telefonga yuklab oching.\n" "$APP_VERSION" > "$NOTES"
+    "$GH" release create "v$APP_VERSION" "$(W "$STABLE")" --title "GreenTable $APP_VERSION" --notes-file "$(W "$NOTES")" --latest
   fi
   "$GH" release view "v$APP_VERSION" --json url -q .url
 fi

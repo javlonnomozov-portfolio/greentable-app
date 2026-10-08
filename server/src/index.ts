@@ -7,7 +7,8 @@ import { startReminders } from './jobs/reminders.ts';
 import { memoryNotifier, type Notifier } from './notifier.ts';
 import { getPricing } from './services/pricing.ts';
 
-const APP_URL = 'https://github.com/javlonnomozov-portfolio/greentable-app/releases/latest';
+/** Doimiy havola: har yangi release'ga APK shu nom bilan yuklanadi (android-release skill). */
+const APP_URL = 'https://github.com/javlonnomozov-portfolio/greentable-app/releases/latest/download/greentable.apk';
 
 const env = loadEnv();
 const now = () => new Date();
