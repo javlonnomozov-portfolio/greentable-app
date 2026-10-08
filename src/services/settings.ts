@@ -6,14 +6,12 @@ export interface AppSettings {
   rounding: RoundingSettings;
   /** Ish kuni shu soatdan boshlanadi (tungi smena kechagi kunga yoziladi). */
   dayStartHour: number;
-  lastBackupAt: number | null;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   hallName: 'Biliard klub',
   rounding: { step: 1000, mode: 'up' },
   dayStartHour: 6,
-  lastBackupAt: null,
 };
 
 export async function getSettings(db: Db): Promise<AppSettings> {
@@ -32,11 +30,10 @@ export async function getSettings(db: Db): Promise<AppSettings> {
       mode: mode === 'up' || mode === 'down' || mode === 'nearest' ? (mode as RoundingMode) : DEFAULT_SETTINGS.rounding.mode,
     },
     dayStartHour: num('day_start_hour', DEFAULT_SETTINGS.dayStartHour),
-    lastBackupAt: map.has('last_backup_at') ? num('last_backup_at', 0) : null,
   };
 }
 
-export type SettingKey = 'hall_name' | 'rounding_step' | 'rounding_mode' | 'day_start_hour' | 'last_backup_at';
+export type SettingKey = 'hall_name' | 'rounding_step' | 'rounding_mode' | 'day_start_hour';
 
 export async function setSetting(db: Db, key: SettingKey, value: string | number): Promise<void> {
   await db.runAsync(

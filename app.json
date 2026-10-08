@@ -2,7 +2,7 @@
   "expo": {
     "name": "GreenTable",
     "slug": "greentable",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "scheme": "greentable",
     "orientation": "default",
     "icon": "./assets/icon.png",
@@ -14,31 +14,13 @@
     },
     "android": {
       "package": "uz.greentable.app",
-      "versionCode": 1,
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#121417",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "category": [
-            "DEFAULT"
-          ],
-          "data": [
-            {
-              "scheme": "content",
-              "mimeType": "application/json"
-            },
-            {
-              "scheme": "file",
-              "mimeType": "application/json"
-            }
-          ]
-        }
-      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {

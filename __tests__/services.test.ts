@@ -1,6 +1,5 @@
 import { migrate } from '@/db/migrations';
 import type { RootDb } from '@/db/types';
-import { clearHistory, exportData, importData, parseBackup } from '@/services/backup';
 import {
   addItem,
   BillError,
@@ -50,7 +49,7 @@ describe('migratsiya', () => {
 
   it('1-versiyadagi bazani yangilaydi va ombor qoldig‘ini saqlaydi', async () => {
     const old = createMemoryDb();
-    await migrate(old, 1);
+    await migrate(old, 1, { sample: true });
     // Eski sxema: qoldiq ustunda saqlanardi, sotuvda kamaytirilardi.
     await old.runAsync('UPDATE products SET track_stock = 1, stock_qty = 7 WHERE id = 1', []);
     await old.runAsync(
@@ -253,127 +252,5 @@ describe('hisobot', () => {
     const p = periodFor('day', 0, at2am, 6);
     expect(new Date(p.from).getDate()).toBe(29);
     expect(p.to - p.from).toBe(24 * HOUR);
-  });
-});
-
-describe('ikki telefon: zaxira orqali birlashtirish', () => {
-  /** A telefondan eksport qilib B ga import qiladi (JSON orqali, xuddi fayldagidek). */
-  const sync = async (from: RootDb, to: RootDb, period: { from: number; to: number } | null = null, at = T0 + 12 * HOUR) =>
-    importData(to, parseBackup(JSON.stringify(await exportData(from, at, period))));
-
-  it('egasining kuni sherigining telefoniga qo‘shiladi, qayta import takrorlamaydi', async () => {
-    const a = db;
-    const b = await createMigratedDb();
-
-    // Sherik (B) o'z kunida ishladi
-    const bBill = await startTableSession(b, 3, T0 - 24 * HOUR);
-    await closeBill(b, bBill, { now: T0 - 23 * HOUR, rounding, payment: cash(30000), customerId: null });
-
-    // Egasi (A): stolni qayta nomladi, qarz, xarajat, ombor kirimi
-    await saveTable(a, { id: 1, name: 'VIP 1', hourly_rate: 50000 }, T0);
-    const aziz = await saveCustomer(a, { name: 'Aziz aka', phone: '+998901112233' }, T0);
-    await restockProduct(a, { productId: 4, qty: 12, totalCost: 60000, method: 'cash', now: T0 });
-    const aBill = await startTableSession(a, 1, T0);
-    await addItem(a, aBill, 4, 2, T0);
-    await closeBill(a, aBill, { now: T0 + HOUR, rounding, payment: cash(30000), customerId: aziz });
-    await openSale(a, T0 + 2 * HOUR); // ochiq hisob — faylga kirmaydi
-
-    const stats = await sync(a, b);
-    expect(stats.added).toMatchObject({ bills: 1, customers: 1, debts: 1, expenses: 1, stockMoves: 1, tables: 0 });
-    expect(stats.updated.tables).toBe(1);
-
-    // B endi A ning kunini ham ko'radi
-    const hallB = await listHall(b);
-    expect(hallB.find((t) => t.id === 1)).toMatchObject({ name: 'VIP 1', hourly_rate: 50000 });
-    expect(hallB).toHaveLength(4);
-    expect(await getStock(b, 4)).toBe(10);
-    const azizB = (await listCustomers(b)).find((c) => c.name === 'Aziz aka')!;
-    expect(azizB.balance).toBe(40000); // 50 000 + 20 000 − 30 000
-    const reportA = await dayReport(a);
-    const reportB = await dayReport(b);
-    expect(reportB.revenue).toEqual(reportA.revenue);
-    expect(reportB.cash).toEqual(reportA.cash);
-    expect(await listOpenSales(b)).toHaveLength(0);
-
-    // Xuddi shu faylni ikkinchi marta import qilish hech narsa qo'shmaydi
-    const again = await sync(a, b);
-    expect(Object.values(again.added).every((n) => n === 0)).toBe(true);
-    expect(Object.values(again.updated).every((n) => n === 0)).toBe(true);
-    expect(await getStock(b, 4)).toBe(10);
-    const aUid = (await getBillDetail(a, aBill))!.bill.uid;
-    const itemsOnB = await b.getAllAsync('SELECT i.id FROM bill_items i JOIN bills x ON x.id = i.bill_id WHERE x.uid = ?', [aUid]);
-    expect(itemsOnB).toHaveLength(1);
-
-    // B da: qarz to'landi va A ning chekidagi xato qarz yozuvi o'chirildi → A ga qaytadi
-    await repayDebt(b, azizB.id, 10000, 'cash', '', T0 + 20 * HOUR);
-    await sync(b, a, null, T0 + 21 * HOUR);
-    expect((await getCustomer(a, aziz))!.balance).toBe(30000);
-    expect((await dayReport(a, T0 - 23 * HOUR)).revenue.total).toBe(30000); // B ning kuni A da ham bor
-
-    // A da chek bekor qilindi → B da ham bekor bo'ladi, qarz va to'lov hisobdan chiqadi
-    await cancelBill(a, aBill, 'xato', T0 + 22 * HOUR);
-    await sync(a, b, null, T0 + 23 * HOUR);
-    expect((await dayReport(b)).revenue.total).toBe(0);
-    expect((await getCustomer(b, azizB.id))!.balance).toBe(-10000);
-    expect(await getStock(b, 4)).toBe(12);
-  });
-
-  it('qo‘lda yozilgan qarzni o‘chirish ham boshqa telefonga o‘tadi', async () => {
-    const b = await createMigratedDb();
-    const c = await saveCustomer(db, { name: 'Jasur' }, T0);
-    await addManualDebt(db, c, 50000, 'eski qarz', T0);
-    await sync(db, b);
-    const jasurB = (await listCustomers(b))[0];
-    expect(jasurB.balance).toBe(50000);
-
-    const entry = (await getLedger(db, c))[0];
-    await deleteLedgerEntry(db, entry, T0 + HOUR);
-    await sync(db, b);
-    expect((await getCustomer(b, jasurB.id))!.balance).toBe(0);
-  });
-
-  it('bir xil ismli mijoz ikki telefonda bitta bo‘ladi', async () => {
-    const b = await createMigratedDb();
-    await saveCustomer(db, { name: 'Aziz aka', phone: '+998901112233' }, T0);
-    await saveCustomer(b, { name: 'aziz aka ' }, T0 - HOUR);
-    await sync(db, b);
-    const list = await listCustomers(b);
-    expect(list).toHaveLength(1);
-    expect(list[0].phone).toBe('+998901112233');
-  });
-
-  it('davr tanlansa faqat o‘sha kundagi o‘zgarishlar yoziladi', async () => {
-    const yesterday = await startTableSession(db, 1, T0 - 24 * HOUR);
-    await closeBill(db, yesterday, { now: T0 - 23 * HOUR, rounding, payment: cash(30000), customerId: null });
-    const today = await startTableSession(db, 2, T0);
-    await closeBill(db, today, { now: T0 + HOUR, rounding, payment: cash(30000), customerId: null });
-
-    const file = await exportData(db, T0 + 2 * HOUR, periodFor('day', 0, T0 + 2 * HOUR, 6));
-    expect(file.bills).toHaveLength(1);
-    expect(file.payments).toHaveLength(1);
-    expect(file.tables).toHaveLength(4);
-  });
-
-  it('begona va eski formatdagi fayllarni rad etadi', () => {
-    expect(() => parseBackup('{"foo":1}')).toThrow('zaxira nusxasi emas');
-    expect(() => parseBackup('{"app":"biliard-pos","schemaVersion":1,"tables":{}}')).toThrow('eski versiyasida');
-  });
-});
-
-describe('tarixni tozalash', () => {
-  it('tarix o‘chadi, stollar va mahsulotlar qoladi', async () => {
-    const c = await saveCustomer(db, { name: 'Aziz' }, T0);
-    const b = await startTableSession(db, 1, T0);
-    await closeBill(db, b, { now: T0 + HOUR, rounding, payment: noPay, customerId: c });
-    await addExpense(db, { categoryId: 1, amount: 1000, method: 'cash', note: '', now: T0 });
-
-    await clearHistory(db, { includeCatalog: false });
-    expect(await listCustomers(db)).toHaveLength(0);
-    expect((await dayReport(db)).revenue.total).toBe(0);
-    expect(await listHall(db)).toHaveLength(4);
-
-    await clearHistory(db, { includeCatalog: true });
-    expect(await listHall(db)).toHaveLength(0);
-    expect(await listProducts(db)).toHaveLength(0);
   });
 });

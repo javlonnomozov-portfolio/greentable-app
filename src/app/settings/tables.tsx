@@ -6,6 +6,7 @@ import { useFeedback } from '@/components/FeedbackProvider';
 import { AmountInput, EmptyState, PinGate } from '@/components/ui';
 import type { TableRow } from '@/db/models';
 import { useDb, useQuery } from '@/db/hooks';
+import { useWriteGuard } from '@/hooks/useWriteGuard';
 import { listTables, saveTable, setTableActive } from '@/services/catalog';
 import { palette } from '@/theme';
 import { formatSom } from '@/utils/money';
@@ -20,6 +21,7 @@ export default function TablesSettings() {
 
 function TablesEditor() {
   const db = useDb();
+  const guard = useWriteGuard();
   const { run, confirm } = useFeedback();
   const { add } = useLocalSearchParams<{ add?: string }>();
   const { data: tables = [] } = useQuery((d) => listTables(d, true), []);
@@ -96,7 +98,7 @@ function TablesEditor() {
           )
         }
       />
-      <FAB icon="plus" label="Stol qo'shish" style={styles.fab} onPress={() => setEditing({})} />
+      <FAB icon="plus" label="Stol qo'shish" style={styles.fab} onPress={guard(() => setEditing({}))} />
       <Portal>
         <Dialog visible={editing != null} onDismiss={() => setEditing(null)}>
           <Dialog.Title>{editing?.id ? 'Stolni tahrirlash' : 'Yangi stol'}</Dialog.Title>

@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router';
 import type { ComponentProps } from 'react';
 import type { ColorValue } from 'react-native';
 import { BrandTitle } from '@/components/Brand';
+import { SyncBadge } from '@/components/SubscriptionStatus';
 import { palette, theme } from '@/theme';
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -24,6 +25,7 @@ export default function TabsLayout() {
         headerTintColor: theme.colors.onSurface,
         headerShadowVisible: false,
         sceneStyle: { backgroundColor: theme.colors.background },
+        headerRight: () => <SyncBadge />,
       }}
     >
       <Tabs.Screen

@@ -4,12 +4,15 @@ import { useState } from 'react';
 import { FlatList, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Button, Chip, Dialog, Portal, Text, TextInput, TouchableRipple } from 'react-native-paper';
 import { CustomerPicker } from '@/components/CustomerPicker';
+import { QuickSetup } from '@/components/QuickSetup';
+import { SubscriptionBanner } from '@/components/SubscriptionStatus';
 import { useFeedback } from '@/components/FeedbackProvider';
 import { TableCard } from '@/components/TableCard';
 import { TimePickerDialog } from '@/components/TimePickerDialog';
 import { useDb, useQuery } from '@/db/hooks';
 import { useNow } from '@/hooks/useNow';
 import { useSettings } from '@/hooks/useSettings';
+import { useWriteGuard } from '@/hooks/useWriteGuard';
 import { calcTimeCharge } from '@/services/billing';
 import { listHall, startTableSession, type HallTable } from '@/services/bills';
 import { palette } from '@/theme';
@@ -28,7 +31,8 @@ export default function HallScreen() {
   const { rounding } = useSettings();
   const { run } = useFeedback();
   const { width } = useWindowDimensions();
-  const { data: tables = [] } = useQuery((d) => listHall(d), []);
+  const guard = useWriteGuard();
+  const { data: tables } = useQuery((d) => listHall(d), []);
   const [starting, setStarting] = useState<HallTable | null>(null);
   const [label, setLabel] = useState('');
   const [customer, setCustomer] = useState<{ id: number; name: string } | null>(null);
@@ -38,7 +42,8 @@ export default function HallScreen() {
   const [pickingTime, setPickingTime] = useState(false);
 
   const columns = width >= 1000 ? 4 : width >= 680 ? 3 : 2;
-  const busy = tables.filter((t) => t.bill_id != null);
+  const list = tables ?? [];
+  const busy = list.filter((t) => t.bill_id != null);
   const runningTotal = busy.reduce((sum, t) => {
     if (t.started_at == null) return sum;
     const charge = calcTimeCharge({ ...t, started_at: t.started_at, hourly_rate: t.bill_rate ?? t.hourly_rate }, now, rounding);
@@ -67,13 +72,15 @@ export default function HallScreen() {
     );
   };
 
-  const data: HallItem[] = [...tables, ADD_TILE];
+  const data: HallItem[] = [...list, ADD_TILE];
 
   return (
     <View style={styles.root}>
+      <SubscriptionBanner />
+      {tables && list.length === 0 ? <QuickSetup /> : null}
       <View style={styles.summary}>
         <Text variant="titleSmall">
-          Band: {busy.length} / {tables.length}
+          Band: {busy.length} / {list.length}
         </Text>
         <Text variant="titleSmall" style={{ color: palette.timer }}>
           Hozirgi hisob: {formatSom(runningTotal)}
@@ -91,7 +98,7 @@ export default function HallScreen() {
               <TouchableRipple
                 style={styles.addTile}
                 borderless
-                onPress={() => router.push({ pathname: '/settings/tables', params: { add: '1' } })}
+                onPress={guard(() => router.push({ pathname: '/settings/tables', params: { add: '1' } }))}
               >
                 <View style={styles.addInner}>
                   <MaterialCommunityIcons name="plus-circle-outline" size={40} color={palette.muted} />
@@ -108,7 +115,7 @@ export default function HallScreen() {
                 onPress={() =>
                   item.bill_id != null
                     ? router.push({ pathname: '/bill/[id]', params: { id: item.bill_id } })
-                    : openStart(item)
+                    : guard(openStart)(item)
                 }
               />
             )}

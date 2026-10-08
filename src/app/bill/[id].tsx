@@ -9,6 +9,7 @@ import { ProductPicker } from '@/components/ProductPicker';
 import { TimePickerDialog } from '@/components/TimePickerDialog';
 import { EmptyState, MoneyRow } from '@/components/ui';
 import { useDb, useQuery } from '@/db/hooks';
+import { useWriteGuard } from '@/hooks/useWriteGuard';
 import { useNow } from '@/hooks/useNow';
 import { useSettings } from '@/hooks/useSettings';
 import { calcElapsedMs } from '@/services/billing';
@@ -36,6 +37,7 @@ export default function BillScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const billId = Number(id);
   const db = useDb();
+  const guard = useWriteGuard();
   const theme = useTheme();
   const now = useNow();
   const { rounding } = useSettings();
@@ -171,7 +173,7 @@ export default function BillScreen() {
                 <Text variant="titleMedium" style={styles.qty}>
                   {item.qty}
                 </Text>
-                <IconButton icon="plus" mode="outlined" size={18} onPress={() => act(() => changeItemQty(db, item.id, 1))} />
+                <IconButton icon="plus" mode="outlined" size={18} onPress={guard(() => act(() => changeItemQty(db, item.id, 1)))} />
                 <Text variant="titleSmall" style={styles.itemSum}>
                   {formatSom(item.qty * item.unit_price, false)}
                 </Text>
@@ -179,7 +181,7 @@ export default function BillScreen() {
             </View>
           ))}
           <Card.Actions>
-            <Button icon="plus" mode="contained-tonal" onPress={() => setPicking(true)}>
+            <Button icon="plus" mode="contained-tonal" onPress={guard(() => setPicking(true))}>
               Mahsulot qo'shish
             </Button>
           </Card.Actions>

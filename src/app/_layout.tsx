@@ -9,6 +9,7 @@ import { ActivityIndicator, PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { FeedbackProvider } from '@/components/FeedbackProvider';
 import { PinProvider } from '@/components/PinProvider';
+import { SyncProvider, useSync } from '@/components/SyncProvider';
 import { DB_NAME } from '@/db/hooks';
 import { migrate } from '@/db/migrations';
 import { palette, theme } from '@/theme';
@@ -65,41 +66,9 @@ export default function RootLayout() {
             <SQLiteProvider databaseName={DB_NAME} onInit={migrate} options={{ enableChangeListener: true }} useSuspense>
               <FeedbackProvider>
                 <PinProvider>
-                  <Stack
-                    // Android 15 ilovani butun ekranga chizadi: pastki tugmalar tizim navigatsiya paneli ostida
-                    // qolmasligi uchun har bir ekran pastdan xavfsiz hudud bilan o'raladi (tablar buni o'zi qiladi).
-                    screenLayout={({ route, children }) =>
-                      route.name === '(tabs)' ? (
-                        children
-                      ) : (
-                        <SafeAreaView edges={['bottom']} style={styles.screen}>
-                          {children}
-                        </SafeAreaView>
-                      )
-                    }
-                    screenOptions={{
-                      headerStyle: { backgroundColor: theme.colors.background },
-                      headerTintColor: theme.colors.onSurface,
-                      headerShadowVisible: false,
-                      contentStyle: { backgroundColor: theme.colors.background },
-                    }}
-                  >
-                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                    <Stack.Screen name="bill/[id]" options={{ title: 'Hisob' }} />
-                    <Stack.Screen name="checkout/[id]" options={{ title: "To'lov" }} />
-                    <Stack.Screen name="receipt/[id]" options={{ title: 'Chek' }} />
-                    <Stack.Screen name="customer/[id]" options={{ title: 'Mijoz' }} />
-                    <Stack.Screen name="expense/new" options={{ title: "Xarajat qo'shish" }} />
-                    <Stack.Screen name="expenses" options={{ title: 'Xarajatlar' }} />
-                    <Stack.Screen name="bills" options={{ title: 'Cheklar' }} />
-                    <Stack.Screen name="settings/tables" options={{ title: 'Stollar' }} />
-                    <Stack.Screen name="settings/products" options={{ title: 'Mahsulotlar' }} />
-                    <Stack.Screen name="settings/expense-categories" options={{ title: 'Xarajat turlari' }} />
-                    <Stack.Screen name="settings/general" options={{ title: 'Hisob-kitob' }} />
-                    <Stack.Screen name="settings/pin" options={{ title: 'PIN kod' }} />
-                    <Stack.Screen name="settings/backup" options={{ title: 'Zaxira va almashish' }} />
-                    <Stack.Screen name="settings/clear" options={{ title: 'Tarixni tozalash' }} />
-                  </Stack>
+                  <SyncProvider>
+                    <AppStack />
+                  </SyncProvider>
                 </PinProvider>
               </FeedbackProvider>
             </SQLiteProvider>
@@ -108,6 +77,54 @@ export default function RootLayout() {
       </PaperProvider>
       <StatusBar style="light" />
     </SafeAreaProvider>
+  );
+}
+
+/** Kirmagan foydalanuvchi faqat kirish ekranini ko'radi (Telegram orqali). */
+function AppStack() {
+  const { ready, loggedIn } = useSync();
+  if (!ready) return <Loading />;
+  return (
+    <Stack
+      // Android 15 ilovani butun ekranga chizadi: pastki tugmalar tizim navigatsiya paneli ostida
+      // qolmasligi uchun har bir ekran pastdan xavfsiz hudud bilan o'raladi (tablar buni o'zi qiladi).
+      screenLayout={({ route, children }) =>
+        route.name === '(tabs)' || route.name === 'login' ? (
+          children
+        ) : (
+          <SafeAreaView edges={['bottom']} style={styles.screen}>
+            {children}
+          </SafeAreaView>
+        )
+      }
+      screenOptions={{
+        headerStyle: { backgroundColor: theme.colors.background },
+        headerTintColor: theme.colors.onSurface,
+        headerShadowVisible: false,
+        contentStyle: { backgroundColor: theme.colors.background },
+      }}
+    >
+      <Stack.Protected guard={!loggedIn}>
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+      </Stack.Protected>
+      <Stack.Protected guard={loggedIn}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="bill/[id]" options={{ title: 'Hisob' }} />
+        <Stack.Screen name="checkout/[id]" options={{ title: "To'lov" }} />
+        <Stack.Screen name="receipt/[id]" options={{ title: 'Chek' }} />
+        <Stack.Screen name="customer/[id]" options={{ title: 'Mijoz' }} />
+        <Stack.Screen name="expense/new" options={{ title: "Xarajat qo'shish" }} />
+        <Stack.Screen name="expenses" options={{ title: 'Xarajatlar' }} />
+        <Stack.Screen name="bills" options={{ title: 'Cheklar' }} />
+        <Stack.Screen name="settings/account" options={{ title: 'Hisob va obuna' }} />
+        <Stack.Screen name="settings/tables" options={{ title: 'Stollar' }} />
+        <Stack.Screen name="settings/products" options={{ title: 'Mahsulotlar' }} />
+        <Stack.Screen name="settings/expense-categories" options={{ title: 'Xarajat turlari' }} />
+        <Stack.Screen name="settings/general" options={{ title: 'Hisob-kitob' }} />
+        <Stack.Screen name="settings/pin" options={{ title: 'PIN kod' }} />
+        <Stack.Screen name="settings/clear" options={{ title: 'Tarixni tozalash' }} />
+      </Stack.Protected>
+    </Stack>
   );
 }
 

@@ -5,7 +5,9 @@ import { Button, Card, Chip, Dialog, IconButton, Portal, Text, TextInput } from 
 import { CustomerPicker } from '@/components/CustomerPicker';
 import { useFeedback } from '@/components/FeedbackProvider';
 import { EmptyState } from '@/components/ui';
+import { SubscriptionBanner } from '@/components/SubscriptionStatus';
 import { useDb, useQuery } from '@/db/hooks';
+import { useWriteGuard } from '@/hooks/useWriteGuard';
 import { listOpenSales, openSale } from '@/services/bills';
 import { palette } from '@/theme';
 import { formatSom } from '@/utils/money';
@@ -14,6 +16,7 @@ import { formatTime } from '@/utils/time';
 export default function SalesScreen() {
   const db = useDb();
   const { run } = useFeedback();
+  const guard = useWriteGuard();
   const { data: sales = [] } = useQuery((d) => listOpenSales(d), []);
   const [naming, setNaming] = useState(false);
   const [label, setLabel] = useState('');
@@ -32,8 +35,9 @@ export default function SalesScreen() {
 
   return (
     <View style={styles.root}>
+      <SubscriptionBanner />
       <View style={styles.actions}>
-        <Button mode="contained" icon="lightning-bolt" contentStyle={styles.big} onPress={() => open()} style={styles.flex}>
+        <Button mode="contained" icon="lightning-bolt" contentStyle={styles.big} onPress={guard(() => open())} style={styles.flex}>
           Tezkor savdo
         </Button>
         <Button
@@ -41,11 +45,11 @@ export default function SalesScreen() {
           icon="account-plus"
           contentStyle={styles.big}
           style={styles.flex}
-          onPress={() => {
+          onPress={guard(() => {
             setLabel('');
             setCustomer(null);
             setNaming(true);
-          }}
+          })}
         >
           Odam nomiga
         </Button>

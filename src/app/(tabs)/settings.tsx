@@ -1,17 +1,16 @@
 import { router, useNavigation, type Href } from 'expo-router';
 import { useLayoutEffect } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { Divider, IconButton, List, Text } from 'react-native-paper';
+import { ScrollView, View } from 'react-native';
+import { Divider, IconButton, List } from 'react-native-paper';
 import { BrandHeader } from '@/components/Brand';
 import { usePin } from '@/components/PinProvider';
+import { STATE_LABEL, SyncBadge } from '@/components/SubscriptionStatus';
+import { isReadOnly, useSync } from '@/components/SyncProvider';
 import { PinGate } from '@/components/ui';
-import { useNow } from '@/hooks/useNow';
 import { useSettings } from '@/hooks/useSettings';
 import { palette } from '@/theme';
 import { formatSom } from '@/utils/money';
-import { formatDateTime } from '@/utils/time';
-
-const BACKUP_WARN_MS = 7 * 24 * 60 * 60_000;
+import { formatDate } from '@/utils/time';
 
 export default function SettingsTab() {
   const navigation = useNavigation();
@@ -19,7 +18,12 @@ export default function SettingsTab() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: hasPin && unlocked ? () => <IconButton icon="lock-outline" onPress={lock} /> : undefined,
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <SyncBadge />
+          {hasPin && unlocked ? <IconButton icon="lock-outline" onPress={lock} /> : null}
+        </View>
+      ),
     });
   }, [navigation, hasPin, unlocked, lock]);
 
@@ -33,8 +37,9 @@ export default function SettingsTab() {
 function SettingsMenu() {
   const settings = useSettings();
   const { hasPin } = usePin();
-  const now = useNow();
-  const backupOld = settings.lastBackupAt == null || now - settings.lastBackupAt > BACKUP_WARN_MS;
+  const { me } = useSync();
+  const sub = me?.subscription;
+  const until = sub?.endsAt && (sub.state === 'trial' || sub.state === 'active') ? ` · ${formatDate(sub.endsAt)} gacha` : '';
 
   const item = (title: string, description: string, icon: string, href: Href, warn = false) => (
     <List.Item
@@ -50,14 +55,16 @@ function SettingsMenu() {
   return (
     <ScrollView>
       <BrandHeader />
-      {backupOld && (
-        <View style={styles.warn}>
-          <Text variant="bodyMedium">
-            Ma'lumotlar faqat shu telefonda saqlanadi. Telefon yo'qolsa yoki buzilsa hammasi yo'qoladi — zaxira nusxani
-            muntazam oling.
-          </Text>
-        </View>
-      )}
+      <List.Section>
+        {item(
+          me?.hall.name ?? 'Hisob va obuna',
+          sub ? `${STATE_LABEL[sub.state]}${until}` : 'Obuna, qurilmalar, sherik',
+          'account-circle-outline',
+          '/settings/account',
+          isReadOnly(sub) || sub?.state === 'grace',
+        )}
+      </List.Section>
+      <Divider />
       <List.Section>
         <List.Subheader>Zal</List.Subheader>
         {item('Stollar', "Nomi va soatlik narxi", 'billiards', '/settings/tables')}
@@ -78,30 +85,23 @@ function SettingsMenu() {
       <List.Section>
         <List.Subheader>Xavfsizlik</List.Subheader>
         {item('PIN kod', hasPin ? "O'rnatilgan" : "O'rnatilmagan — hamma bo'lim ochiq", 'dialpad', '/settings/pin', !hasPin)}
-        {item(
-          'Zaxira va sherik bilan almashish',
-          settings.lastBackupAt ? `Oxirgi: ${formatDateTime(settings.lastBackupAt)}` : 'Hali olinmagan',
-          'cloud-sync-outline',
-          '/settings/backup',
-          backupOld,
-        )}
       </List.Section>
-      <Divider />
-      <List.Section>
-        <List.Subheader>Xavfli amallar</List.Subheader>
-        <List.Item
-          title="Tarixni tozalash"
-          titleStyle={{ color: palette.danger }}
-          description="Barcha cheklar, qarzlar va xarajatlarni o'chirish"
-          left={(p) => <List.Icon {...p} icon="delete-forever-outline" color={palette.danger} />}
-          right={(p) => <List.Icon {...p} icon="chevron-right" />}
-          onPress={() => router.push('/settings/clear')}
-        />
-      </List.Section>
+      {me?.user.role === 'owner' ? (
+        <>
+          <Divider />
+          <List.Section>
+            <List.Subheader>Xavfli amallar</List.Subheader>
+            <List.Item
+              title="Tarixni tozalash"
+              titleStyle={{ color: palette.danger }}
+              description="Barcha qurilmalarda cheklar, qarzlar va xarajatlarni o'chirish"
+              left={(p) => <List.Icon {...p} icon="delete-forever-outline" color={palette.danger} />}
+              right={(p) => <List.Icon {...p} icon="chevron-right" />}
+              onPress={() => router.push('/settings/clear')}
+            />
+          </List.Section>
+        </>
+      ) : null}
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  warn: { margin: 16, marginBottom: 0, padding: 12, borderRadius: 12, backgroundColor: palette.dangerBg },
-});

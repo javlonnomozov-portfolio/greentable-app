@@ -10,6 +10,52 @@ const SEED_PRODUCTS: [string, string, number][] = [
 ];
 const SEED_EXPENSE_CATEGORIES = ['Ijara', 'Kommunal', 'Maosh', 'Mahsulot xaridi', "Ta'mirlash", 'Boshqa'];
 
+/** Sinxronlanadigan jadvallar: [nomi, global kalit ustuni, lokal kalit ustuni]. */
+export const SYNC_TABLES: [string, string, string][] = [
+  ['tables', 'uid', 'id'],
+  ['products', 'uid', 'id'],
+  ['expense_categories', 'uid', 'id'],
+  ['customers', 'uid', 'id'],
+  ['bills', 'uid', 'id'],
+  ['bill_items', 'uid', 'id'],
+  ['payments', 'uid', 'id'],
+  ['debts', 'uid', 'id'],
+  ['expenses', 'uid', 'id'],
+  ['stock_moves', 'uid', 'id'],
+  ['settings', 'key', 'key'],
+];
+
+const NOW_MS = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)";
+const NOT_APPLYING = '(SELECT applying FROM sync_state WHERE id = 1) = 0';
+
+/**
+ * Qurilmadagi har bir o'zgarishni outbox'ga yozadi. `updated_at` ni servis o'zgartirmagan bo'lsa
+ * (yoki yangi qatorda 0 bo'lsa) trigger o'zi hozirgi vaqtga oshiradi — aks holda server o'zgarishni
+ * eski deb rad etardi. `uid` o'zgarsa (nom bo'yicha moslashda) eski uid o'chirilgan deb yuboriladi.
+ */
+function syncTriggers([t, uid, pk]: [string, string, string]): string {
+  // INSERT OR REPLACE o'rniga DELETE + INSERT: tashqi UPSERT (ON CONFLICT) trigger ichidagi REPLACE'ni bekor qiladi.
+  const put = (val: string, deleted: 0 | 1) => `
+    DELETE FROM sync_outbox WHERE tbl = '${t}' AND uid = ${val};
+    INSERT INTO sync_outbox (tbl, uid, deleted, ts) VALUES ('${t}', ${val}, ${deleted}, ${NOW_MS});`;
+  return `
+  CREATE TRIGGER sync_${t}_ai AFTER INSERT ON ${t} WHEN ${NOT_APPLYING}
+  BEGIN
+    UPDATE ${t} SET updated_at = ${NOW_MS} WHERE ${pk} = NEW.${pk} AND NEW.updated_at = 0;${put(`NEW.${uid}`, 0)}
+  END;
+  CREATE TRIGGER sync_${t}_au AFTER UPDATE ON ${t} WHEN ${NOT_APPLYING}
+  BEGIN
+    UPDATE ${t} SET updated_at = MAX(OLD.updated_at + 1, ${NOW_MS})
+      WHERE ${pk} = NEW.${pk} AND NEW.updated_at = OLD.updated_at;${put(`NEW.${uid}`, 0)}
+    DELETE FROM sync_outbox WHERE tbl = '${t}' AND uid = OLD.${uid} AND OLD.${uid} IS NOT NEW.${uid};
+    INSERT INTO sync_outbox (tbl, uid, deleted, ts)
+      SELECT '${t}', OLD.${uid}, 1, ${NOW_MS} WHERE OLD.${uid} IS NOT NEW.${uid};
+  END;
+  CREATE TRIGGER sync_${t}_ad AFTER DELETE ON ${t} WHEN ${NOT_APPLYING}
+  BEGIN${put(`OLD.${uid}`, 1)}
+  END;`;
+}
+
 /**
  * Har bir migratsiya faqat oldinga yuradi. Yangi o'zgarish kerak bo'lsa,
  * massiv oxiriga yangi element qo'shiladi (eskilarini o'zgartirmang).
@@ -210,12 +256,67 @@ const MIGRATIONS: string[] = [
 
   ALTER TABLE products DROP COLUMN stock_qty;
   `,
+
+  // 3: server bilan sinxronlash. Har bir o'zgarish trigger orqali `sync_outbox` ga tushadi
+  // (servislar tegilmaydi), `updated_at` esa har o'zgarishda o'zi oshadi — server "oxirgi yozuv yutadi"
+  // qoidasi bilan solishtiradi. Serverdan kelgan yozuvlar `applying = 1` paytida qo'llanadi.
+  `
+  ALTER TABLE bill_items ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+  UPDATE bill_items SET updated_at = created_at;
+  ALTER TABLE stock_moves ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+  UPDATE stock_moves SET updated_at = created_at;
+  ALTER TABLE settings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+
+  -- Ikki qurilma oflaynda bitta stolni ochishi mumkin: sinxronda ikkala hisob ham saqlanishi kerak.
+  DROP INDEX idx_bills_open_table;
+  CREATE INDEX idx_bills_open_table ON bills(table_id) WHERE status = 'open';
+
+  CREATE TABLE sync_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_rev INTEGER NOT NULL DEFAULT 0,
+    epoch INTEGER NOT NULL DEFAULT 0,
+    hall_id TEXT,
+    applying INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO sync_state (id) VALUES (1);
+
+  CREATE TABLE sync_outbox (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    tbl TEXT NOT NULL,
+    uid TEXT NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    ts INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (tbl, uid)
+  );
+
+  -- Ota yozuvi hali kelmagan qatorlar (masalan chek mahsuloti chekdan oldin kelsa) — keyin qayta qo'llanadi.
+  CREATE TABLE sync_pending (
+    tbl TEXT NOT NULL,
+    uid TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (tbl, uid)
+  );
+
+  -- Faqat shu qurilmaga tegishli (sinxronlanmaydigan) qiymatlar: obuna holati keshi va h.k.
+  CREATE TABLE local_kv (
+    key TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL
+  );
+
+  ${SYNC_TABLES.map(syncTriggers).join('\n')}
+
+  ${SYNC_TABLES.map(([t, uid]) => `INSERT INTO sync_outbox (tbl, uid) SELECT '${t}', ${uid} FROM ${t};`).join('\n')}
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;
 
-/** `target` faqat testlar uchun: eski versiyadagi bazani yangilashni tekshirish. */
-export async function migrate(db: Db, target = MIGRATIONS.length): Promise<void> {
+/**
+ * `target` faqat testlar uchun: eski versiyadagi bazani yangilashni tekshirish.
+ * `sample` — namunaviy stollar/mahsulotlar (v1 dagidek). Ilovada endi o'chirilgan: biliardxona
+ * ma'lumoti serverdan keladi yoki egasi birinchi kirishda stollarni o'zi kiritadi.
+ */
+export async function migrate(db: Db, target = MIGRATIONS.length, opts: { sample?: boolean } = {}): Promise<void> {
   // Kutish vaqti birinchi: Expo Go ilovani qayta yuklaganda eski ulanish bir lahza bazani band qilib turishi mumkin.
   await db.execAsync('PRAGMA busy_timeout = 5000;');
   const mode = await db.getFirstAsync<{ journal_mode: string }>('PRAGMA journal_mode', []);
@@ -230,7 +331,7 @@ export async function migrate(db: Db, target = MIGRATIONS.length): Promise<void>
       await db.execAsync('ROLLBACK').catch(() => {});
       throw e;
     }
-    if (v === 0) await seed(db);
+    if (v === 0 && opts.sample) await seed(db);
   }
 }
 

@@ -5,7 +5,8 @@
   "build": {
     "base": {
       "env": {
-        "ORG_GRADLE_PROJECT_reactNativeArchitectures": "armeabi-v7a,arm64-v8a"
+        "ORG_GRADLE_PROJECT_reactNativeArchitectures": "armeabi-v7a,arm64-v8a",
+        "EXPO_PUBLIC_API_URL": "https://server-production-9388.up.railway.app"
       }
     },
     "preview": {

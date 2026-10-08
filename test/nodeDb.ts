@@ -35,7 +35,15 @@ export function createMemoryDb(): RootDb {
   return db;
 }
 
+/** v1 dagidek namunaviy stollar/mahsulotlar bilan (servis testlari shularga tayanadi). */
 export async function createMigratedDb(): Promise<RootDb> {
+  const db = createMemoryDb();
+  await migrate(db, undefined, { sample: true });
+  return db;
+}
+
+/** Yangi o'rnatilgan ilova: bo'sh baza. */
+export async function createEmptyDb(): Promise<RootDb> {
   const db = createMemoryDb();
   await migrate(db);
   return db;

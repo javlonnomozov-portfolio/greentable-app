@@ -4,12 +4,16 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Card, Checkbox, Text, TextInput } from 'react-native-paper';
 import { useFeedback } from '@/components/FeedbackProvider';
-import { PinGate } from '@/components/ui';
-import { useDb } from '@/db/hooks';
-import { clearHistory } from '@/services/backup';
+import { useSync } from '@/components/SyncProvider';
+import { EmptyState, PinGate } from '@/components/ui';
+import { api } from '@/sync/api';
 import { palette } from '@/theme';
 
 const CONFIRM_WORD = "O'CHIRISH";
+
+/** Serverda o'chiriladigan jadvallar (katalog belgilansa — stollar, mahsulotlar, xarajat turlari ham). */
+const HISTORY = ['bills', 'bill_items', 'payments', 'debts', 'expenses', 'stock_moves', 'customers'];
+const CATALOG = ['tables', 'products', 'expense_categories'];
 
 /** Telefon klaviaturasidagi har xil apostroflar (', ʻ, ’, `) bir xil hisoblanadi. */
 const normalize = (text: string) => text.toUpperCase().replace(/[^A-Z]/g, '');
@@ -23,8 +27,8 @@ export default function ClearHistorySettings() {
 }
 
 function ClearHistoryScreen() {
-  const db = useDb();
   const { run } = useFeedback();
+  const { me, withToken, syncNow } = useSync();
   const [includeCatalog, setIncludeCatalog] = useState(false);
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
@@ -33,12 +37,18 @@ function ClearHistoryScreen() {
   const clear = async () => {
     setBusy(true);
     const done = await run(async () => {
-      await clearHistory(db, { includeCatalog });
+      // Server epoch'ni oshiradi: barcha qurilmalar (shu jumladan bu) lokal bazani tozalab, qaytadan yuklaydi.
+      await withToken((t) => api.resetHall(t, includeCatalog ? [...HISTORY, ...CATALOG] : HISTORY));
+      await syncNow();
       return true;
     }, "Tarix o'chirildi");
     setBusy(false);
     if (done) router.back();
   };
+
+  if (me?.user.role !== 'owner') {
+    return <EmptyState icon="account-lock-outline" title="Tarixni faqat biliardxona egasi tozalay oladi" />;
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -50,17 +60,13 @@ function ClearHistoryScreen() {
           </Text>
           <Text variant="bodyLarge" style={styles.center}>
             Barcha cheklar, to'lovlar, qarz daftari (mijozlar va ularning qarzlari), xarajatlar, ombor harakatlari va
-            ochiq stollar o'chiriladi. Hisobotlar bo'm-bo'sh bo'ladi.
+            ochiq stollar <Text style={styles.bold}>barcha qurilmalarda</Text> o'chiriladi. Hisobotlar bo'm-bo'sh bo'ladi.
           </Text>
           <Text variant="titleMedium" style={[styles.center, { color: palette.danger }]}>
             Bu amalni qaytarib bo'lmaydi.
           </Text>
         </Card.Content>
       </Card>
-
-      <Button mode="contained-tonal" icon="cloud-upload-outline" onPress={() => router.push('/settings/backup')}>
-        Avval zaxira oling
-      </Button>
 
       <View style={styles.checkRow}>
         <Checkbox.Android
@@ -76,7 +82,7 @@ function ClearHistoryScreen() {
         Belgilanmasa ular (narxlari bilan) saqlanib qoladi. Sozlamalar va PIN kod har doim saqlanadi.
       </Text>
       <Text variant="bodySmall" style={styles.muted}>
-        Eslatma: keyin sherigingizning telefonidan zaxira qo'shsangiz, uning telefonidagi ma'lumotlar bu yerga qaytib keladi.
+        Internet kerak. Boshqa telefonlarda yuborilmagan o'zgarishlar bo'lsa, ular ham o'chib ketadi.
       </Text>
 
       <TextInput
@@ -110,5 +116,6 @@ const styles = StyleSheet.create({
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   flex: { flex: 1 },
   muted: { color: palette.muted },
+  bold: { fontWeight: '700' },
   btn: { paddingVertical: 6 },
 });

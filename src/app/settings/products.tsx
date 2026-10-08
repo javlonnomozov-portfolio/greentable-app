@@ -5,6 +5,7 @@ import { useFeedback } from '@/components/FeedbackProvider';
 import { AmountInput, EmptyState, MethodPicker, PinGate, SectionTitle } from '@/components/ui';
 import type { PaymentMethod, ProductRow } from '@/db/models';
 import { useDb, useQuery } from '@/db/hooks';
+import { useWriteGuard } from '@/hooks/useWriteGuard';
 import { listProducts, restockProduct, saveProduct, setProductActive, setStock } from '@/services/catalog';
 import { palette } from '@/theme';
 import { formatSom, parseSom } from '@/utils/money';
@@ -35,6 +36,7 @@ interface StockDraft {
 
 function ProductsEditor() {
   const db = useDb();
+  const guard = useWriteGuard();
   const { run } = useFeedback();
   const { data: products = [] } = useQuery((d) => listProducts(d, true), []);
   const [editing, setEditing] = useState<Draft | null>(null);
@@ -110,7 +112,7 @@ function ProductsEditor() {
               <View style={styles.right}>
                 <IconButton
                   icon="package-variant-plus"
-                  onPress={() => setStockDraft({ product: item, mode: 'restock', qty: '', totalCost: 0, method: 'cash' })}
+                  onPress={guard(() => setStockDraft({ product: item, mode: 'restock', qty: '', totalCost: 0, method: 'cash' }))}
                 />
                 <Switch value={item.is_active === 1} onValueChange={(v) => run(() => setProductActive(db, item.id, v))} />
               </View>
@@ -122,7 +124,7 @@ function ProductsEditor() {
         icon="plus"
         label="Mahsulot"
         style={styles.fab}
-        onPress={() => setEditing({ name: '', category: categories[0] ?? '', price: 0, track_stock: false })}
+        onPress={guard(() => setEditing({ name: '', category: categories[0] ?? '', price: 0, track_stock: false }))}
       />
 
       <Portal>
