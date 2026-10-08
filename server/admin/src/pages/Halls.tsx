@@ -50,8 +50,9 @@ export function Halls() {
                 <Table.Th>Biliardxona</Table.Th>
                 <Table.Th>Egasi</Table.Th>
                 <Table.Th>Holat</Table.Th>
-                <Table.Th>Muddat</Table.Th>
-                <Table.Th>Narx</Table.Th>
+                <Table.Th>Balans</Table.Th>
+                <Table.Th>Pul yetadi</Table.Th>
+                <Table.Th>Narx (kuniga)</Table.Th>
                 <Table.Th>Qurilmalar</Table.Th>
                 <Table.Th>Oxirgi faollik</Table.Th>
                 <Table.Th>Ochilgan</Table.Th>
@@ -70,11 +71,12 @@ export function Halls() {
                   <Table.Td>
                     <Badge color={STATE[h.state].color}>{STATE[h.state].label}</Badge>
                   </Table.Td>
+                  <Table.Td c={h.balance < 0 ? 'red.4' : undefined}>{som(h.balance)}</Table.Td>
                   <Table.Td>
-                    {date(h.endsAt)} <Text span size="xs" c="dimmed">({h.daysLeft} kun)</Text>
+                    {h.endsAt ? date(h.endsAt) : 'muddatsiz'} {h.endsAt && <Text span size="xs" c="dimmed">({h.daysLeft} kun)</Text>}
                   </Table.Td>
                   <Table.Td>
-                    {som(h.price)}
+                    {som(h.daily)}
                     {h.discount && <Text size="xs" c="gold.5">{h.discount}</Text>}
                   </Table.Td>
                   <Table.Td>

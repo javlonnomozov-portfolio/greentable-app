@@ -5,6 +5,7 @@ import { Text } from 'react-native-paper';
 import type { SubState, SubscriptionInfo } from '../../server/src/contract';
 import { useNow } from '@/hooks/useNow';
 import { palette } from '@/theme';
+import { formatSom } from '@/utils/money';
 import { formatDate } from '@/utils/time';
 import { isReadOnly, useSync } from './SyncProvider';
 
@@ -26,13 +27,14 @@ export const STATE_COLOR: Record<SubState, string> = {
 const SKEW_WARN_MS = 2 * 60_000;
 
 function bannerText(sub: SubscriptionInfo, readOnly: boolean): string | null {
-  if (readOnly) return "Obuna tugagan: faqat ko'rish rejimi. Yangi o'yin va savdo boshlab bo'lmaydi — to'lov qiling.";
+  if (readOnly) return "Balans tugagan: faqat ko'rish rejimi. Yangi o'yin va savdo boshlab bo'lmaydi — hisobni to'ldiring.";
   if (sub.state === 'grace' && sub.graceEndsAt) {
-    return `Obuna muddati tugadi. ${formatDate(sub.graceEndsAt)} gacha to'lov qilinmasa, ilova faqat ko'rish rejimiga o'tadi.`;
+    return `Balans tugadi (${formatSom(sub.balance)}). ${formatDate(sub.graceEndsAt)} gacha to'ldirilmasa, ilova faqat ko'rish rejimiga o'tadi.`;
   }
-  if ((sub.state === 'trial' || sub.state === 'active') && sub.daysLeft <= 3) {
-    const what = sub.state === 'trial' ? 'Sinov muddati' : 'Obuna';
-    return `${what} ${sub.daysLeft <= 1 ? 'ertaga' : `${sub.daysLeft} kundan keyin`} tugaydi.`;
+  if ((sub.state === 'trial' || sub.state === 'active') && sub.endsAt && sub.daysLeft <= 3) {
+    const when = sub.daysLeft <= 1 ? 'ertaga' : `${sub.daysLeft} kundan keyin`;
+    if (sub.state === 'trial' && sub.balance < sub.dailyPrice) return `Sinov muddati ${when} tugaydi — hisobni to'ldiring.`;
+    return `Balansdagi pul ${when} tugaydi (kuniga ${formatSom(sub.dailyPrice)}).`;
   }
   return null;
 }

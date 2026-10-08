@@ -20,7 +20,7 @@ import {
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'wouter';
 import { api, type Quote, type Receipt, type ReceiptStatus } from '../api.ts';
 import { STATE, date, dateTime, som, tgLink } from '../format.ts';
@@ -79,20 +79,15 @@ function PendingReceipt({ r }: { r: Receipt }) {
   const qc = useQueryClient();
   const sub = r.subscription!;
   const [amount, setAmount] = useState<number | ''>('');
-  const [days, setDays] = useState<number | ''>('');
-  const [daysTouched, setDaysTouched] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
   const [debAmount] = useDebouncedValue(amount, 300);
 
   const quote = useQuery({
-    queryKey: ['quote', r.id, debAmount, daysTouched ? days : null],
-    queryFn: () => api<Quote>(`/receipts/${r.id}/quote`, { body: { amount: Number(debAmount) || 0, days: daysTouched && days ? days : undefined } }),
+    queryKey: ['quote', r.id, debAmount],
+    queryFn: () => api<Quote>(`/receipts/${r.id}/quote`, { body: { amount: Number(debAmount) || 0 } }),
     enabled: debAmount !== '',
   });
-  useEffect(() => {
-    if (!daysTouched && quote.data) setDays(quote.data.days);
-  }, [quote.data, daysTouched]);
 
   const done = (msg: string) => {
     notifications.show({ message: msg, color: 'emerald' });
@@ -100,7 +95,7 @@ function PendingReceipt({ r }: { r: Receipt }) {
     qc.invalidateQueries({ queryKey: ['dashboard'] });
   };
   const approve = useMutation({
-    mutationFn: () => api(`/receipts/${r.id}/approve`, { body: { amount: Number(amount), days: Number(days) } }),
+    mutationFn: () => api(`/receipts/${r.id}/approve`, { body: { amount: Number(amount) } }),
     onSuccess: () => done(`Chek №${r.id} tasdiqlandi`),
     onError: (e) => notifications.show({ message: e.message, color: 'red' }),
   });
@@ -133,7 +128,7 @@ function PendingReceipt({ r }: { r: Receipt }) {
             <Group gap="xs">
               <Badge color={STATE[sub.state].color}>{STATE[sub.state].label}</Badge>
               <Text size="sm">
-                {sub.endsAt ? `${date(sub.endsAt)} gacha` : 'muddat yo‘q'} · narx {som(sub.price)}/oy
+                balans {som(sub.balance)} · {sub.endsAt ? `${date(sub.endsAt)} gacha` : 'muddatsiz'} · {som(sub.price)}/30 kun
                 {sub.discount && <Text span c="gold.5"> ({sub.discount.label})</Text>}
               </Text>
             </Group>
@@ -147,28 +142,22 @@ function PendingReceipt({ r }: { r: Receipt }) {
                 suffix=" so'm"
                 min={0}
                 step={10_000}
-                w={200}
+                w={220}
                 autoFocus
               />
-              <NumberInput
-                label="Qo'shiladigan kunlar"
-                value={days}
-                onChange={(v) => {
-                  setDaysTouched(true);
-                  setDays(v === '' ? '' : Number(v));
-                }}
-                min={1}
-                w={170}
-              />
             </Group>
+            <Text size="sm" c="dimmed">
+              Chekda ko'rsatilgan, hisobingizga tushgan summani kiriting — balansga qo'shiladi, har kuni {som(sub.dailyPrice)} yechiladi.
+            </Text>
             {quote.data && amount !== '' && (
-              <Text size="sm" c="dimmed">
-                {som(Number(amount))} ÷ {som(quote.data.price)}/oy × 30 = <b>{quote.data.days} kun</b> → yangi muddat{' '}
-                <Text span c="emerald.5" fw={700}>{date(quote.data.paidUntil)} gacha</Text>
+              <Text size="sm">
+                Balans: {som(quote.data.balanceBefore)} →{' '}
+                <Text span c="emerald.5" fw={700}>{som(quote.data.balanceAfter)}</Text>
+                {quote.data.endsAt ? <> · pul taxminan <b>{date(quote.data.endsAt)}</b> gacha yetadi</> : null}
               </Text>
             )}
             <Group mt="sm">
-              <Button onClick={() => approve.mutate()} loading={approve.isPending} disabled={amount === '' || !days}>
+              <Button onClick={() => approve.mutate()} loading={approve.isPending} disabled={!amount}>
                 Tasdiqlash
               </Button>
               <Button variant="light" color="red" onClick={() => setRejecting(true)}>
@@ -210,7 +199,7 @@ function History({ rows }: { rows: Receipt[] }) {
               <Table.Th>Biliardxona</Table.Th>
               <Table.Th>Yuborgan</Table.Th>
               <Table.Th>Summa</Table.Th>
-              <Table.Th>Kun</Table.Th>
+              <Table.Th>30 kunlik narx</Table.Th>
               <Table.Th>Ko'rib chiqilgan</Table.Th>
               <Table.Th>Izoh</Table.Th>
             </Table.Tr>
@@ -222,9 +211,9 @@ function History({ rows }: { rows: Receipt[] }) {
                 <Table.Td>{r.hall.name}</Table.Td>
                 <Table.Td>{r.user.name}</Table.Td>
                 <Table.Td>{som(r.amount)}</Table.Td>
-                <Table.Td>{r.daysAdded ?? '—'}</Table.Td>
+                <Table.Td>{som(r.priceAtReview)}</Table.Td>
                 <Table.Td>{dateTime(r.reviewedAt)}</Table.Td>
-                <Table.Td>{r.rejectReason ?? (r.priceAtReview ? `narx ${som(r.priceAtReview)}/oy` : '')}</Table.Td>
+                <Table.Td>{r.rejectReason ?? ''}</Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>

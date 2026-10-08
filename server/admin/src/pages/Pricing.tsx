@@ -29,10 +29,10 @@ export function PricingPage() {
       <Title order={2}>Narxlar va sozlamalar</Title>
       <Card withBorder>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          <NumberInput label="Oylik narx" description="Chegirmasiz, bitta biliardxona uchun" value={form.monthlyPrice} onChange={num('monthlyPrice')} thousandSeparator=" " suffix=" so'm" min={0} step={10_000} />
+          <NumberInput label="30 kunlik narx" description={`Chegirmasiz. Har kuni balansdan ${Math.round(form.monthlyPrice / 30).toLocaleString('ru-RU')} so'm yechiladi`} value={form.monthlyPrice} onChange={num('monthlyPrice')} thousandSeparator=" " suffix=" so'm" min={0} step={10_000} />
           <NumberInput label="Qurilma limiti" description="Biliardxona sahifasida alohida o'zgartirish mumkin" value={form.defaultDeviceLimit} onChange={num('defaultDeviceLimit')} min={1} />
           <NumberInput label="Bepul sinov (kun)" description="Birinchi marta ro'yxatdan o'tganlarga. 0 — sinov yo'q" value={form.trialDays} onChange={num('trialDays')} min={0} />
-          <NumberInput label="Imtiyoz kunlari" description="Muddat tugagach, faqat-ko'rish rejimigacha" value={form.graceDays} onChange={num('graceDays')} min={0} />
+          <NumberInput label="Imtiyoz kunlari" description="Balans tugagach (minusga ketib) faqat-ko'rish rejimigacha" value={form.graceDays} onChange={num('graceDays')} min={0} />
         </SimpleGrid>
       </Card>
       <Card withBorder>

@@ -6,7 +6,7 @@ import { loadEnv } from '../src/env.ts';
 import { runReminders } from '../src/jobs/reminders.ts';
 import { memoryNotifier } from '../src/notifier.ts';
 import { bindLogin, confirmLogin } from '../src/services/auth.ts';
-import { createReceipt } from '../src/services/billing.ts';
+import { createReceipt, runBilling } from '../src/services/billing.ts';
 import { acceptInvite, createHall, createInvite } from '../src/services/halls.ts';
 import { updatePricing } from '../src/services/pricing.ts';
 import { getUser } from '../src/services/users.ts';
@@ -143,9 +143,10 @@ describe('admin panel API', () => {
           amount: null,
           validFrom: null,
           validTo: at(30).toISOString(),
-          benefitMonths: 3,
+          benefitDays: 90,
+          audience: 'all',
+          hallIds: [],
           maxUses: 100,
-          newOnly: false,
           active: true,
           note: null,
         },
@@ -163,19 +164,19 @@ describe('admin panel API', () => {
     expect((await app.request(`/admin/api/receipts/${r1.id}/file`, json('GET', undefined, undefined, cookie))).headers.get('content-type')).toBe('image/jpeg');
 
     const q = await (await app.request(`/admin/api/receipts/${r1.id}/quote`, json('POST', { amount: 144_000 }, undefined, cookie))).json();
-    expect(q.days).toBe(60);
-    const ap = await app.request(`/admin/api/receipts/${r1.id}/approve`, json('POST', { amount: 144_000, days: 60 }, undefined, cookie));
+    expect(q).toMatchObject({ price: 72_000, daily: 2400, balanceAfter: 144_000 });
+    const ap = await app.request(`/admin/api/receipts/${r1.id}/approve`, json('POST', { amount: 144_000 }, undefined, cookie));
     expect(ap.status).toBe(200);
     expect(notifier.sent.at(-1)).toMatchObject({ to: user.telegramId });
-    expect(notifier.sent.at(-1)!.html).toContain("To'lov tasdiqlandi");
-    expect((await app.request(`/admin/api/receipts/${r1.id}/approve`, json('POST', { amount: 1, days: 1 }, undefined, cookie))).status).toBe(409);
+    expect(notifier.sent.at(-1)!.html).toContain("To'lov qabul qilindi");
+    expect((await app.request(`/admin/api/receipts/${r1.id}/approve`, json('POST', { amount: 1 }, undefined, cookie))).status).toBe(409);
 
     const r2 = await createReceipt(database.db, { hallId: hall.id, userId: user.id, fileId: 'G', fileKind: 'photo', mimeType: null, caption: null }, clock);
     await app.request(`/admin/api/receipts/${r2.id}/reject`, json('POST', { reason: 'Boshqa karta' }, undefined, cookie));
     expect(notifier.sent.at(-1)!.html).toContain('Sabab: Boshqa karta');
 
     const dash = await (await app.request('/admin/api/dashboard', json('GET', undefined, undefined, cookie))).json();
-    expect(dash).toMatchObject({ total: 1, counts: { active: 1 }, pendingReceipts: 0, monthRevenue: 144_000 });
+    expect(dash).toMatchObject({ total: 1, counts: { trial: 1 }, pendingReceipts: 0, monthRevenue: 144_000, totalBalance: 144_000 });
 
     const pricing = await app.request(
       '/admin/api/pricing',
@@ -185,6 +186,7 @@ describe('admin panel API', () => {
 
     const detail = await (await app.request(`/admin/api/halls/${hall.id}`, json('GET', undefined, undefined, cookie))).json();
     expect(detail.events.map((e: { kind: string }) => e.kind)).toEqual(expect.arrayContaining(['trial', 'discount', 'payment']));
+    expect(detail.hall.balance).toBe(144_000);
   });
 });
 
@@ -196,7 +198,7 @@ describe('admin: biliardxonani o‘chirish', () => {
 
     const { token, hall, owner } = await login('install-del-1');
     const r = await createReceipt(database.db, { hallId: hall.id, userId: owner.id, fileId: 'F', fileKind: 'photo', mimeType: null, caption: null }, clock);
-    await app.request(`/admin/api/receipts/${r.id}/approve`, json('POST', { amount: 90_000, days: 30 }, undefined, cookie));
+    await app.request(`/admin/api/receipts/${r.id}/approve`, json('POST', { amount: 90_000 }, undefined, cookie));
 
     const del = await app.request(`/admin/api/halls/${hall.id}`, json('DELETE', { resetTrial: true }, undefined, cookie));
     expect(del.status).toBe(200);
@@ -213,13 +215,17 @@ describe('eslatmalar', () => {
     const user = await makeUser(database.db);
     await createHall(database.db, user, 'Zal', T0); // sinov 7 kun
     const db = database.db;
-    expect(await runReminders(db, notifier, at(2))).toBe(0);
-    expect(await runReminders(db, notifier, at(4.5))).toBe(1); // 3 kun qoldi
-    expect(await runReminders(db, notifier, at(4.6))).toBe(0);
-    expect(await runReminders(db, notifier, at(6.5))).toBe(1); // ertaga
-    expect(await runReminders(db, notifier, at(7.5))).toBe(1); // imtiyoz
-    expect(await runReminders(db, notifier, at(9.5))).toBe(1); // faqat ko'rish
-    expect(await runReminders(db, notifier, at(9.6))).toBe(0);
+    const tick = async (t: Date) => {
+      await runBilling(db, t);
+      return runReminders(db, notifier, t);
+    };
+    expect(await tick(at(2))).toBe(0);
+    expect(await tick(at(4.5))).toBe(1); // 3 kun qoldi
+    expect(await tick(at(4.6))).toBe(0);
+    expect(await tick(at(6.5))).toBe(1); // ertaga
+    expect(await tick(at(7.5))).toBe(1); // imtiyoz
+    expect(await tick(at(9.5))).toBe(1); // faqat ko'rish
+    expect(await tick(at(9.6))).toBe(0);
     expect(notifier.sent.filter((m) => m.to === user.telegramId)).toHaveLength(4);
   });
 });

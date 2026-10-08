@@ -4,6 +4,7 @@ import {
   Group,
   Loader,
   Modal,
+  MultiSelect,
   NumberInput,
   SegmentedControl,
   SimpleGrid,
@@ -17,19 +18,22 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { api, type Discount } from '../api.ts';
+import { api, type Audience, type Discount, type HallRow } from '../api.ts';
 import { date, dateInputToIso, isoToDateInput, som } from '../format.ts';
 
+type EditableKind = 'promo' | 'campaign' | 'global';
+
 interface Form {
-  kind: 'promo' | 'campaign';
+  kind: EditableKind;
   code: string;
   mode: 'percent' | 'amount';
   value: number | '';
   validFrom: string;
   validTo: string;
-  benefitMonths: number | '';
+  benefitDays: number | '';
+  audience: Audience;
+  hallIds: string[];
   maxUses: number | '';
-  newOnly: boolean;
   active: boolean;
   note: string;
 }
@@ -41,23 +45,25 @@ const empty: Form = {
   value: 20,
   validFrom: '',
   validTo: '',
-  benefitMonths: 3,
+  benefitDays: 90,
+  audience: 'all',
+  hallIds: [],
   maxUses: '',
-  newOnly: false,
   active: true,
   note: '',
 };
 
 const toForm = (d: Discount): Form => ({
-  kind: d.kind,
+  kind: d.kind === 'personal' ? 'promo' : d.kind,
   code: d.code ?? '',
   mode: d.percent != null ? 'percent' : 'amount',
   value: d.percent ?? d.amount ?? '',
   validFrom: isoToDateInput(d.validFrom),
   validTo: isoToDateInput(d.validTo),
-  benefitMonths: d.benefitMonths ?? '',
+  benefitDays: d.benefitDays ?? '',
+  audience: d.audience,
+  hallIds: d.targets.map((t) => t.hallId),
   maxUses: d.maxUses ?? '',
-  newOnly: d.newOnly,
   active: d.active,
   note: d.note ?? '',
 });
@@ -69,12 +75,22 @@ const toBody = (f: Form) => ({
   amount: f.mode === 'amount' && f.value !== '' ? f.value : null,
   validFrom: dateInputToIso(f.validFrom),
   validTo: dateInputToIso(f.validTo, true),
-  benefitMonths: f.benefitMonths === '' ? null : f.benefitMonths,
-  maxUses: f.maxUses === '' ? null : f.maxUses,
-  newOnly: f.newOnly,
+  benefitDays: f.kind === 'global' || f.benefitDays === '' ? null : f.benefitDays,
+  audience: f.audience,
+  hallIds: f.audience === 'selected' ? f.hallIds : [],
+  maxUses: f.kind === 'global' || f.maxUses === '' ? null : f.maxUses,
   active: f.active,
   note: f.note.trim() || null,
 });
+
+const KIND: Record<Discount['kind'], { label: string; color: string }> = {
+  promo: { label: 'Promo kod', color: 'gold' },
+  campaign: { label: 'Yangilarga', color: 'blue' },
+  global: { label: 'Hammaga', color: 'emerald' },
+  personal: { label: 'Shaxsiy', color: 'grape' },
+};
+
+const AUDIENCE: Record<Audience, string> = { all: 'hamma', new: "hali to'lov qilmaganlar", selected: 'tanlanganlar' };
 
 const value = (d: Discount) => (d.percent != null ? `−${d.percent}%` : `−${som(d.amount)}`);
 
@@ -86,6 +102,7 @@ function windowText(d: Discount) {
 export function Discounts() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ['discounts'], queryFn: () => api<Discount[]>('/discounts') });
+  const halls = useQuery({ queryKey: ['halls'], queryFn: () => api<HallRow[]>('/halls') });
   const [editing, setEditing] = useState<{ id: number | null; form: Form } | null>(null);
 
   const save = useMutation({
@@ -102,6 +119,7 @@ export function Discounts() {
 
   const f = editing?.form;
   const set = (patch: Partial<Form>) => setEditing((e) => (e ? { ...e, form: { ...e.form, ...patch } } : e));
+  const list = (data ?? []).filter((d) => d.kind !== 'personal');
 
   return (
     <Stack>
@@ -110,40 +128,45 @@ export function Discounts() {
         <Button onClick={() => setEditing({ id: null, form: empty })}>Yangi chegirma</Button>
       </Group>
       <Text size="sm" c="dimmed">
-        <b>Promo kod</b> — mijoz botda «🎟 Promo kod» orqali kiritadi. <b>Kampaniya</b> — ko'rsatilgan oraliqda ro'yxatdan o'tgan har bir
-        yangi biliardxonaga avtomatik beriladi. Bir nechta chegirma bo'lsa, eng kattasi amal qiladi.
+        <b>Promo kod</b> — mijoz botda «🎟 Promo kod» orqali kiritadi. <b>Yangilarga</b> — ko'rsatilgan oraliqda ro'yxatdan o'tgan har bir
+        biliardxonaga avtomatik. <b>Hammaga</b> — oraliq davomida barcha (yoki tanlangan) biliardxonalarga birdan. Bitta biliardxonaga
+        alohida chegirma — biliardxona sahifasidan. Bir nechta chegirma bo'lsa eng kattasi amal qiladi.
       </Text>
       {!data ? (
         <Loader />
       ) : (
-        <Table.ScrollContainer minWidth={820}>
+        <Table.ScrollContainer minWidth={900}>
           <Table highlightOnHover>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Turi</Table.Th>
                 <Table.Th>Chegirma</Table.Th>
+                <Table.Th>Kimga</Table.Th>
                 <Table.Th>Amal qilish oynasi</Table.Th>
-                <Table.Th>Muddati</Table.Th>
+                <Table.Th>Davomiyligi</Table.Th>
                 <Table.Th>Ishlatilgan</Table.Th>
                 <Table.Th>Holat</Table.Th>
                 <Table.Th>Izoh</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {data.map((d) => (
+              {list.map((d) => (
                 <Table.Tr key={d.id} onClick={() => setEditing({ id: d.id, form: toForm(d) })} style={{ cursor: 'pointer' }}>
-                  <Table.Td>{d.kind === 'promo' ? <Badge color="gold" variant="light">{d.code}</Badge> : <Badge variant="light">Kampaniya</Badge>}</Table.Td>
+                  <Table.Td>
+                    <Badge color={KIND[d.kind].color} variant="light">{d.kind === 'promo' ? d.code : KIND[d.kind].label}</Badge>
+                  </Table.Td>
                   <Table.Td fw={700}>{value(d)}</Table.Td>
+                  <Table.Td>
+                    {AUDIENCE[d.audience]}
+                    {d.audience === 'selected' && <Text size="xs" c="dimmed">{d.targets.map((t) => t.name).join(', ')}</Text>}
+                  </Table.Td>
                   <Table.Td>{windowText(d)}</Table.Td>
-                  <Table.Td>{d.benefitMonths ? `${d.benefitMonths} oy` : 'cheksiz'}</Table.Td>
+                  <Table.Td>{d.kind === 'global' ? 'oyna davomida' : d.benefitDays ? `${d.benefitDays} kun` : 'cheksiz'}</Table.Td>
                   <Table.Td>
                     {d.usedCount}
                     {d.maxUses ? ` / ${d.maxUses}` : ''}
                   </Table.Td>
-                  <Table.Td>
-                    {d.active ? <Badge color="emerald">faol</Badge> : <Badge color="gray">o'chirilgan</Badge>}
-                    {d.newOnly && <Badge color="blue" variant="light" ml={4}>yangilar</Badge>}
-                  </Table.Td>
+                  <Table.Td>{d.active ? <Badge color="emerald">faol</Badge> : <Badge color="gray">o'chirilgan</Badge>}</Table.Td>
                   <Table.Td>{d.note}</Table.Td>
                 </Table.Tr>
               ))}
@@ -157,10 +180,11 @@ export function Discounts() {
           <Stack>
             <SegmentedControl
               value={f.kind}
-              onChange={(v) => set({ kind: v as Form['kind'] })}
+              onChange={(v) => set({ kind: v as EditableKind })}
               data={[
                 { value: 'promo', label: 'Promo kod' },
-                { value: 'campaign', label: 'Kampaniya (avtomatik)' },
+                { value: 'campaign', label: "Yangi ro'yxatdan o'tganlarga" },
+                { value: 'global', label: 'Hammaga birdan' },
               ]}
             />
             {f.kind === 'promo' && (
@@ -176,44 +200,65 @@ export function Discounts() {
                 ]}
               />
               <NumberInput
-                label={f.mode === 'percent' ? 'Chegirma, %' : "Chegirma, so'm"}
+                label={f.mode === 'percent' ? 'Chegirma, %' : "30 kunlik narxdan, so'm"}
                 value={f.value}
                 onChange={(v) => set({ value: v === '' ? '' : Number(v) })}
                 min={1}
                 max={f.mode === 'percent' ? 100 : undefined}
                 thousandSeparator={f.mode === 'amount' ? ' ' : undefined}
-                w={180}
+                w={200}
               />
             </Group>
+            <SegmentedControl
+              value={f.audience}
+              onChange={(v) => set({ audience: v as Audience })}
+              data={[
+                { value: 'all', label: 'Hammaga' },
+                { value: 'new', label: "Hali to'lov qilmaganlarga" },
+                { value: 'selected', label: 'Tanlangan biliardxonalarga' },
+              ]}
+            />
+            {f.audience === 'selected' && (
+              <MultiSelect
+                label="Biliardxonalar"
+                searchable
+                value={f.hallIds}
+                onChange={(v) => set({ hallIds: v })}
+                data={(halls.data ?? []).map((h) => ({ value: h.id, label: `${h.name} — ${h.owner.name}` }))}
+              />
+            )}
             <SimpleGrid cols={2}>
               <TextInput
                 type="date"
-                label={f.kind === 'promo' ? 'Kod qachondan' : "Ro'yxatdan o'tish qachondan"}
+                label={f.kind === 'promo' ? 'Kod qachondan' : f.kind === 'campaign' ? "Ro'yxatdan o'tish qachondan" : 'Aksiya qachondan'}
                 value={f.validFrom}
                 onChange={(e) => set({ validFrom: e.currentTarget.value })}
               />
               <TextInput
                 type="date"
-                label={f.kind === 'promo' ? 'Kod qachongacha' : "Ro'yxatdan o'tish qachongacha"}
+                label={f.kind === 'promo' ? 'Kod qachongacha' : f.kind === 'campaign' ? "Ro'yxatdan o'tish qachongacha" : 'Aksiya qachongacha'}
                 value={f.validTo}
                 onChange={(e) => set({ validTo: e.currentTarget.value })}
               />
-              <NumberInput
-                label="Chegirma muddati (oy)"
-                description="Biriktirilgandan keyin. Bo'sh — cheksiz"
-                value={f.benefitMonths}
-                onChange={(v) => set({ benefitMonths: v === '' ? '' : Number(v) })}
-                min={1}
-              />
-              <NumberInput
-                label="Necha marta ishlatiladi"
-                description="Bo'sh — cheksiz"
-                value={f.maxUses}
-                onChange={(v) => set({ maxUses: v === '' ? '' : Number(v) })}
-                min={1}
-              />
+              {f.kind !== 'global' && (
+                <NumberInput
+                  label="Chegirma necha kun amal qiladi"
+                  description="Biriktirilgandan keyin. Bo'sh — cheksiz"
+                  value={f.benefitDays}
+                  onChange={(v) => set({ benefitDays: v === '' ? '' : Number(v) })}
+                  min={1}
+                />
+              )}
+              {f.kind !== 'global' && (
+                <NumberInput
+                  label="Necha marta ishlatiladi"
+                  description="Bo'sh — cheksiz"
+                  value={f.maxUses}
+                  onChange={(v) => set({ maxUses: v === '' ? '' : Number(v) })}
+                  min={1}
+                />
+              )}
             </SimpleGrid>
-            <Switch label="Faqat hali to'lov qilmaganlar uchun" checked={f.newOnly} onChange={(e) => set({ newOnly: e.currentTarget.checked })} />
             <Switch label="Faol" checked={f.active} onChange={(e) => set({ active: e.currentTarget.checked })} />
             <TextInput label="Izoh (faqat sizga ko'rinadi)" value={f.note} onChange={(e) => set({ note: e.currentTarget.value })} />
             <Button loading={save.isPending} onClick={() => save.mutate({ id: editing!.id, form: f })}>

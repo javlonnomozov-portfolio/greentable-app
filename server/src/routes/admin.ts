@@ -1,22 +1,30 @@
-import { and, desc, eq, gte, inArray, isNull, lte, or, gt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
 import type { AppDeps } from '../app.ts';
 import { devices, discounts, hallDiscounts, hallMembers, halls, receipts, users } from '../db/schema.ts';
 import { AdminAuthError, SESSION_TTL_MS, endSession, requestOtp, validSession, verifyOtp } from '../services/admin-auth.ts';
-import { computeStatus, effectivePrice } from '../services/billing-math.ts';
 import {
   ReviewError,
-  adjustSubscription,
+  adjustBalance,
   approveReceipt,
+  extendHallTrial,
   hallBilling,
   hallEvents,
   quote,
   rejectReceipt,
   toSubscriptionInfo,
 } from '../services/billing.ts';
-import { attachDiscount, createDiscount, discountLabel, listDiscounts, updateDiscount } from '../services/discounts.ts';
+import {
+  attachDiscount,
+  createDiscount,
+  createPersonalDiscount,
+  discountLabel,
+  listDiscounts,
+  stopHallDiscount,
+  updateDiscount,
+} from '../services/discounts.ts';
 import { activeDevices, deleteHall, deviceLimit, getHall, revokeDevice } from '../services/halls.ts';
 import { getPricing, updatePricing } from '../services/pricing.ts';
 import { displayName } from '../services/users.ts';
@@ -30,22 +38,35 @@ const nullableDate = z
   .nullable()
   .transform((s) => (s ? new Date(s) : null));
 
+const oneOfAmount = (d: { percent: number | null; amount: number | null }) => (d.percent == null) !== (d.amount == null);
+
 const DiscountBody = z
   .object({
-    kind: z.enum(['promo', 'campaign']),
+    kind: z.enum(['promo', 'campaign', 'global']),
     code: z.string().trim().max(40).nullable(),
     percent: z.number().int().min(1).max(100).nullable(),
     amount: z.number().int().min(1).nullable(),
     validFrom: nullableDate,
     validTo: nullableDate,
-    benefitMonths: z.number().int().min(1).max(120).nullable(),
+    benefitDays: z.number().int().min(1).max(3650).nullable(),
+    audience: z.enum(['all', 'new', 'selected']),
+    hallIds: z.array(z.string().uuid()).max(500).default([]),
     maxUses: z.number().int().min(1).nullable(),
-    newOnly: z.boolean(),
     active: z.boolean(),
     note: z.string().max(500).nullable(),
   })
-  .refine((d) => (d.percent == null) !== (d.amount == null), { message: 'Foiz yoki summadan bittasini kiriting' })
-  .refine((d) => d.kind !== 'promo' || !!d.code, { message: 'Promo kod kerak' });
+  .refine(oneOfAmount, { message: 'Foiz yoki summadan bittasini kiriting' })
+  .refine((d) => d.kind !== 'promo' || !!d.code, { message: 'Promo kod kerak' })
+  .refine((d) => d.audience !== 'selected' || d.hallIds.length > 0, { message: 'Kamida bitta biliardxona tanlang' });
+
+const PersonalBody = z
+  .object({
+    percent: z.number().int().min(1).max(100).nullable(),
+    amount: z.number().int().min(1).nullable(),
+    days: z.number().int().min(1).max(3650).nullable(),
+    note: z.string().max(500).nullable(),
+  })
+  .refine(oneOfAmount, { message: 'Foiz yoki summadan bittasini kiriting' });
 
 const PricingBody = z.object({
   monthlyPrice: z.number().int().min(0),
@@ -125,48 +146,43 @@ export function adminRoutes(deps: AppDeps) {
 
   app.use('/*', requireAdmin);
 
-  /** Barcha biliardxonalar holati va narxi (chegirmalar bitta so'rovda). */
+  /** Barcha biliardxonalar: holat, balans, narx, qurilmalar. */
   async function hallRows() {
     const t = now();
-    const pricing = await getPricing(db);
     const rows = await db
       .select({ hall: halls, owner: users })
       .from(halls)
       .innerJoin(users, eq(users.id, halls.ownerUserId))
       .orderBy(desc(halls.createdAt));
-    const disc = await db
-      .select({ hallId: hallDiscounts.hallId, d: discounts })
-      .from(hallDiscounts)
-      .innerJoin(discounts, eq(discounts.id, hallDiscounts.discountId))
-      .where(and(lte(hallDiscounts.startsAt, t), or(isNull(hallDiscounts.endsAt), gt(hallDiscounts.endsAt, t))));
     const devs = await db
       .select({ hallId: devices.hallId, n: sql<number>`count(*)::int`, seen: sql<Date | null>`max(${devices.lastSeenAt})` })
       .from(devices)
       .where(isNull(devices.revokedAt))
       .groupBy(devices.hallId);
-    const byHall = new Map<string, (typeof disc)[number]['d'][]>();
-    for (const r of disc) byHall.set(r.hallId, [...(byHall.get(r.hallId) ?? []), r.d]);
     const devMap = new Map(devs.map((d) => [d.hallId, d]));
-    return rows.map(({ hall, owner }) => {
-      const status = computeStatus(hall, pricing.graceDays, t);
-      const { price, discount } = effectivePrice(pricing.monthlyPrice, byHall.get(hall.id) ?? []);
+    const out = [];
+    for (const { hall, owner } of rows) {
+      const b = await hallBilling(db, hall, t);
       const dev = devMap.get(hall.id);
-      return {
+      out.push({
         id: hall.id,
         name: hall.name,
         blocked: hall.blocked,
         createdAt: hall.createdAt,
-        state: status.state,
-        endsAt: status.endsAt,
-        daysLeft: status.daysLeft,
-        price,
-        discount: discount ? discountLabel(discount) : null,
+        state: b.status.state,
+        endsAt: b.status.endsAt,
+        daysLeft: b.status.daysLeft,
+        balance: hall.balance,
+        price: b.price,
+        daily: b.daily,
+        discount: b.discount ? discountLabel(b.discount) : null,
         devices: dev?.n ?? 0,
-        deviceLimit: deviceLimit(hall, pricing),
+        deviceLimit: deviceLimit(hall, b.pricing),
         lastSeenAt: dev?.seen ? new Date(dev.seen) : null,
         owner: { id: owner.id, name: displayName(owner), username: owner.username, phone: owner.phone, telegramId: owner.telegramId },
-      };
-    });
+      });
+    }
+    return out;
   }
 
   app.get('/dashboard', async (c) => {
@@ -179,10 +195,18 @@ export function adminRoutes(deps: AppDeps) {
       .from(receipts)
       .where(and(eq(receipts.status, 'approved'), gte(receipts.reviewedAt, monthStart(now()))));
     const soon = list
-      .filter((h) => (h.state === 'trial' || h.state === 'active') && h.daysLeft <= 3)
+      .filter((h) => (h.state === 'trial' || h.state === 'active') && h.endsAt && h.daysLeft <= 3)
       .concat(list.filter((h) => h.state === 'grace'))
       .slice(0, 20);
-    return c.json({ counts, total: list.length, pendingReceipts: pending.n, monthRevenue: month.sum, monthPayments: month.n, soon });
+    return c.json({
+      counts,
+      total: list.length,
+      pendingReceipts: pending.n,
+      monthRevenue: month.sum,
+      monthPayments: month.n,
+      totalBalance: list.reduce((s, h) => s + Math.max(0, h.balance), 0),
+      soon,
+    });
   });
 
   app.get('/halls', async (c) => c.json(await hallRows()));
@@ -216,7 +240,8 @@ export function adminRoutes(deps: AppDeps) {
         telegramId: m.user.telegramId,
       })),
       devices: await activeDevices(db, hall.id),
-      discounts: discs.map(({ hd, d }) => ({ id: hd.id, label: discountLabel(d), kind: d.kind, startsAt: hd.startsAt, endsAt: hd.endsAt })),
+      discounts: discs.map(({ hd, d }) => ({ id: hd.id, label: discountLabel(d), kind: d.kind, note: d.note, startsAt: hd.startsAt, endsAt: hd.endsAt })),
+      globalDiscount: billing.discount && billing.discount.hallDiscountId == null ? discountLabel(billing.discount) : null,
       receipts: recs,
       events: await hallEvents(db, hall.id),
     });
@@ -243,21 +268,36 @@ export function adminRoutes(deps: AppDeps) {
     return ok ? c.json({ ok: true }) : fail(c, 404, 'Topilmadi');
   });
 
-  app.post('/halls/:id/subscription', async (c) => {
-    const body = await readJson(
-      c,
-      z.union([
-        z.object({ days: z.number().int().min(-3650).max(3650), note: z.string().max(500).optional() }),
-        z.object({ paidUntil: nullableDate, note: z.string().max(500).optional() }),
-      ]),
-    );
+  /** Balansni qo'lda o'zgartirish (naqd to'lov, tuzatish, bonus): +/− summa. */
+  app.post('/halls/:id/balance', async (c) => {
+    const body = await readJson(c, z.object({ amount: z.number().int().min(-100_000_000).max(100_000_000), note: z.string().max(500).optional() }));
     if (!body.ok) return fail(c, 400, body.message);
+    if (body.data.amount === 0) return fail(c, 400, 'Summa 0 bo‘lmasin');
     try {
-      return c.json(await adjustSubscription(db, c.req.param('id'), body.data, now()));
+      return c.json(await adjustBalance(db, c.req.param('id'), body.data.amount, body.data.note, now()));
     } catch (e) {
       if (e instanceof ReviewError) return fail(c, 404, e.message);
       throw e;
     }
+  });
+
+  app.post('/halls/:id/trial', async (c) => {
+    const body = await readJson(c, z.object({ days: z.number().int().min(1).max(365), note: z.string().max(500).optional() }));
+    if (!body.ok) return fail(c, 400, body.message);
+    try {
+      return c.json(await extendHallTrial(db, c.req.param('id'), body.data.days, body.data.note, now()));
+    } catch (e) {
+      if (e instanceof ReviewError) return fail(c, 404, e.message);
+      throw e;
+    }
+  });
+
+  app.post('/halls/:id/personal-discount', async (c) => {
+    const body = await readJson(c, PersonalBody);
+    if (!body.ok) return fail(c, 400, body.message);
+    if (!(await getHall(db, c.req.param('id')))) return fail(c, 404, 'Topilmadi');
+    await createPersonalDiscount(db, c.req.param('id'), body.data, now());
+    return c.json({ ok: true });
   });
 
   app.post('/halls/:id/discounts', async (c) => {
@@ -270,10 +310,7 @@ export function adminRoutes(deps: AppDeps) {
   });
 
   app.delete('/hall-discounts/:id', async (c) => {
-    await db
-      .update(hallDiscounts)
-      .set({ endsAt: now() })
-      .where(eq(hallDiscounts.id, Number(c.req.param('id'))));
+    await stopHallDiscount(db, Number(c.req.param('id')), now());
     return c.json({ ok: true });
   });
 
@@ -315,23 +352,24 @@ export function adminRoutes(deps: AppDeps) {
   });
 
   app.post('/receipts/:id/quote', async (c) => {
-    const body = await readJson(c, z.object({ amount: z.number().int().min(0), days: z.number().int().min(1).optional() }));
+    const body = await readJson(c, z.object({ amount: z.number().int().min(0) }));
     if (!body.ok) return fail(c, 400, body.message);
     const [r] = await db.select().from(receipts).where(eq(receipts.id, Number(c.req.param('id'))));
     if (!r) return fail(c, 404, 'Topilmadi');
-    return c.json(await quote(db, r.hallId, body.data.amount, now(), body.data.days));
+    return c.json(await quote(db, r.hallId, body.data.amount, now()));
   });
 
   app.post('/receipts/:id/approve', async (c) => {
-    const body = await readJson(c, z.object({ amount: z.number().int().min(0), days: z.number().int().min(1).max(3650) }));
+    const body = await readJson(c, z.object({ amount: z.number().int().min(1).max(100_000_000) }));
     if (!body.ok) return fail(c, 400, body.message);
     try {
       const res = await approveReceipt(db, Number(c.req.param('id')), body.data, now());
+      const until = res.status.endsAt ? `\nPul taxminan <b>${formatDate(res.status.endsAt)} gacha</b> yetadi.` : '';
       await notifier.toUser(
         res.telegramId,
-        `✅ <b>To'lov tasdiqlandi</b> (chek №${res.receipt.id})\nBiliardxona: ${escapeHtml(res.hall.name)}\nSumma: ${formatSom(body.data.amount)}\nObuna: <b>${formatDate(res.hall.paidUntil!)} gacha</b>\n\nRahmat!`,
+        `✅ <b>To'lov qabul qilindi</b> (chek №${res.receipt.id})\nBiliardxona: ${escapeHtml(res.hall.name)}\nSumma: ${formatSom(body.data.amount)}\nBalans: <b>${formatSom(res.hall.balance)}</b>${until}\n\nRahmat!`,
       );
-      return c.json({ ok: true, paidUntil: res.hall.paidUntil });
+      return c.json({ ok: true, balance: res.hall.balance, endsAt: res.status.endsAt });
     } catch (e) {
       if (e instanceof ReviewError) return fail(c, 409, e.message);
       throw e;
@@ -380,16 +418,6 @@ export function adminRoutes(deps: AppDeps) {
     if (!body.ok) return fail(c, 400, body.message);
     const row = await updateDiscount(db, Number(c.req.param('id')), body.data);
     return row ? c.json(row) : fail(c, 404, 'Topilmadi');
-  });
-
-  /** Chegirma qaysi biliardxonalarga biriktirilgan. */
-  app.get('/discounts/:id/halls', async (c) => {
-    const rows = await db
-      .select({ hd: hallDiscounts, hall: halls })
-      .from(hallDiscounts)
-      .innerJoin(halls, eq(halls.id, hallDiscounts.hallId))
-      .where(inArray(hallDiscounts.discountId, [Number(c.req.param('id'))]));
-    return c.json(rows.map((r) => ({ hallId: r.hall.id, name: r.hall.name, startsAt: r.hd.startsAt, endsAt: r.hd.endsAt })));
   });
 
   return app;

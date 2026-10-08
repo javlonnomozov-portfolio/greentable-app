@@ -15,10 +15,14 @@ export interface SubscriptionInfo {
   readOnly: boolean;
   /** endsAt gacha qolgan to'liq kunlar (o'tib ketgan bo'lsa manfiy). */
   daysLeft: number;
-  /** Chegirmasiz oylik narx. */
+  /** Chegirmasiz 30 kunlik narx. */
   monthlyPrice: number;
-  /** Shu biliardxona uchun amaldagi oylik narx. */
+  /** Shu biliardxona uchun amaldagi 30 kunlik narx (chegirma bilan). */
   price: number;
+  /** Har kuni balansdan yechiladigan summa. */
+  dailyPrice: number;
+  /** Hisobdagi pul; minus — imtiyoz kunlaridagi qarz. */
+  balance: number;
   discount: DiscountInfo | null;
 }
 

@@ -43,7 +43,9 @@ export interface HallRow {
   state: SubState;
   endsAt: string | null;
   daysLeft: number;
+  balance: number;
   price: number;
+  daily: number;
   discount: string | null;
   devices: number;
   deviceLimit: number;
@@ -57,6 +59,7 @@ export interface Dashboard {
   pendingReceipts: number;
   monthRevenue: number;
   monthPayments: number;
+  totalBalance: number;
   soon: HallRow[];
 }
 
@@ -70,7 +73,6 @@ export interface Receipt {
   caption: string | null;
   status: ReceiptStatus;
   amount: number | null;
-  daysAdded: number | null;
   priceAtReview: number | null;
   rejectReason: string | null;
   reviewedAt: string | null;
@@ -82,8 +84,10 @@ export interface Receipt {
 
 export interface Quote {
   price: number;
-  days: number;
-  paidUntil: string;
+  daily: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  endsAt: string | null;
 }
 
 export interface Device {
@@ -96,22 +100,36 @@ export interface Device {
 
 export interface SubEvent {
   id: number;
-  kind: 'trial' | 'payment' | 'extend' | 'set' | 'discount';
+  kind: 'trial' | 'trial_extend' | 'payment' | 'charge' | 'adjust' | 'discount';
   days: number | null;
   amount: number | null;
   fromDate: string | null;
   toDate: string | null;
   note: string | null;
+  balanceAfter: number | null;
   createdAt: string;
 }
 
 export interface HallDetail {
-  hall: { id: string; name: string; blocked: boolean; deviceLimit: number | null; trialEndsAt: string | null; paidUntil: string | null; createdAt: string; dataEpoch: number };
+  hall: {
+    id: string;
+    name: string;
+    blocked: boolean;
+    deviceLimit: number | null;
+    trialEndsAt: string | null;
+    balance: number;
+    paidThrough: string | null;
+    debtSince: string | null;
+    createdAt: string;
+    dataEpoch: number;
+  };
   subscription: SubscriptionInfo;
   deviceLimit: number;
   members: (Owner & { role: 'owner' | 'admin'; joinedAt: string })[];
   devices: Device[];
-  discounts: { id: number; label: string; kind: string; startsAt: string; endsAt: string | null }[];
+  discounts: { id: number; label: string; kind: string; note: string | null; startsAt: string; endsAt: string | null }[];
+  /** Hammaga (global) aksiya amal qilayotgan bo'lsa. */
+  globalDiscount: string | null;
   receipts: Omit<Receipt, 'hall' | 'user' | 'subscription'>[];
   events: SubEvent[];
 }
@@ -125,18 +143,22 @@ export interface Pricing {
   supportText: string;
 }
 
+export type DiscountKind = 'promo' | 'campaign' | 'global' | 'personal';
+export type Audience = 'all' | 'new' | 'selected';
+
 export interface Discount {
   id: number;
-  kind: 'promo' | 'campaign';
+  kind: DiscountKind;
   code: string | null;
   percent: number | null;
   amount: number | null;
   validFrom: string | null;
   validTo: string | null;
-  benefitMonths: number | null;
+  benefitDays: number | null;
+  audience: Audience;
+  targets: { hallId: string; name: string }[];
   maxUses: number | null;
   usedCount: number;
-  newOnly: boolean;
   active: boolean;
   note: string | null;
   createdAt: string;

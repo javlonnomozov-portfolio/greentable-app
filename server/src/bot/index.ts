@@ -22,7 +22,7 @@ import {
 } from '../services/halls.ts';
 import { getPricing } from '../services/pricing.ts';
 import { displayName, getUser, setActiveHall, setBotState, setPhone, upsertTelegramUser, type User } from '../services/users.ts';
-import { escapeHtml, formatDate, formatTime } from '../services/util.ts';
+import { escapeHtml, formatDate, formatSom, formatTime } from '../services/util.ts';
 import { STATE_LABEL, priceLine, statusLines } from '../texts.ts';
 
 type Ctx = Context & { user: User };
@@ -285,7 +285,7 @@ export function createBot(token: string, deps: BotDeps): Bot<Ctx> {
         `🧾 <b>Yangi chek №${receipt.id}</b>`,
         `🏢 ${escapeHtml(m.hall.name)}`,
         `👤 ${escapeHtml(displayName(u))}${u.username ? ` @${escapeHtml(u.username)}` : ''}${u.phone ? ` ${u.phone}` : ''}`,
-        `💰 Oylik narx: ${priceLine(b)}`,
+        `💰 Balans: ${formatSom(b.hall.balance)}, 30 kunlik narx: ${priceLine(b)}`,
         `📅 ${STATE_LABEL[b.status.state]}${b.status.endsAt ? `, ${formatDate(b.status.endsAt)}` : ''}`,
         receipt.caption ? `💬 ${escapeHtml(receipt.caption)}` : '',
       ]
@@ -324,12 +324,12 @@ export function createBot(token: string, deps: BotDeps): Bot<Ctx> {
           not_found: 'Bunday promo kod topilmadi.',
           closed: 'Promo kod muddati tugagan yoki limiti tugagan.',
           already: 'Bu promo kod allaqachon qo‘llangan.',
-          not_new: 'Bu promo kod faqat yangi mijozlar uchun.',
+          not_allowed: 'Bu promo kod sizning biliardxonangiz uchun emas.',
         }[res.reason];
         return ctx.reply(why, { reply_markup: menuKeyboard() });
       }
       const b = await hallBilling(db, m.hall, now());
-      return ctx.reply(`✅ Promo kod qo'llandi: ${escapeHtml(discountLabel(res.discount))}\nOylik narx: ${priceLine(b)}`, {
+      return ctx.reply(`✅ Promo kod qo'llandi: ${escapeHtml(discountLabel(res.discount))}\n30 kunlik narx: ${priceLine(b)} (kuniga ${formatSom(b.daily)})`, {
         ...html,
         reply_markup: menuKeyboard(),
       });

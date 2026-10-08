@@ -7,7 +7,7 @@ import { escapeHtml, formatDate, formatSom } from './services/util.ts';
 export const STATE_LABEL: Record<SubState, string> = {
   trial: '🎁 Sinov muddati',
   active: '✅ Faol',
-  grace: '⚠️ Muddat tugadi (imtiyoz kunlari)',
+  grace: '⚠️ Balans tugadi (imtiyoz kunlari)',
   expired: "🔒 Faqat ko'rish rejimi",
 };
 
@@ -20,12 +20,15 @@ export function priceLine(b: HallBilling): string {
 
 export function statusLines(b: HallBilling): string {
   const s = b.status;
+  const h = b.hall;
   const lines = [`Holat: ${STATE_LABEL[s.state]}`];
-  if (s.endsAt) {
-    if (s.state === 'trial' || s.state === 'active') lines.push(`Muddat: ${formatDate(s.endsAt)} gacha (${s.daysLeft} kun)`);
-    else if (s.state === 'grace' && s.graceEndsAt) lines.push(`Imtiyoz: ${formatDate(s.graceEndsAt)} gacha, keyin ilova faqat ko'rish rejimiga o'tadi`);
-    else lines.push(`Muddat tugagan: ${formatDate(s.endsAt)}`);
+  if (s.state === 'trial' && h.trialEndsAt) lines.push(`Sinov: ${formatDate(h.trialEndsAt)} gacha bepul`);
+  lines.push(`Balans: <b>${formatSom(h.balance)}</b> (kuniga ${formatSom(b.daily)})`);
+  if ((s.state === 'trial' || s.state === 'active') && s.endsAt) {
+    lines.push(`Pul taxminan ${formatDate(s.endsAt)} gacha yetadi (${Math.max(0, s.daysLeft)} kun)`);
+  } else if (s.state === 'grace' && s.graceEndsAt) {
+    lines.push(`${formatDate(s.graceEndsAt)} gacha to'lov qilinmasa, ilova faqat ko'rish rejimiga o'tadi`);
   }
-  lines.push(`Oylik narx: ${priceLine(b)}`);
+  lines.push(`30 kunlik narx: ${priceLine(b)}`);
   return lines.join('\n');
 }

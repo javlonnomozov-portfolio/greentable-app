@@ -52,7 +52,12 @@ export const halls = pgTable('halls', {
     .notNull()
     .references(() => users.id),
   trialEndsAt: ts('trial_ends_at'),
-  paidUntil: ts('paid_until'),
+  /** Hisobdagi pul (so'm). Imtiyoz kunlarida minusga ketadi — keyingi to'lov avval shuni yopadi. */
+  balance: integer('balance').notNull().default(0),
+  /** Shu vaqtgacha kunlik to'lov yechib bo'lingan. null — hali yechish boshlanmagan (sinov tugashi yoki ochilgan vaqtdan). */
+  paidThrough: ts('paid_through'),
+  /** Balans qachondan minusda (imtiyoz shundan sanaladi). */
+  debtSince: ts('debt_since'),
   /** null — umumiy sozlamadagi limit. */
   deviceLimit: integer('device_limit'),
   /** "Tarixni tozalash"da oshiriladi: qurilmalar lokal bazasini tozalab, qaytadan yuklaydi. */
@@ -142,7 +147,13 @@ export const pricing = pgTable('pricing', {
   updatedAt: createdAt(),
 });
 
-export type DiscountKind = 'promo' | 'campaign';
+/**
+ * promo — kod bilan; campaign — oynada ro'yxatdan o'tganlarga avtomatik; global — oynada hammaga birdan
+ * (biriktirilmaydi); personal — bitta biliardxonaga admin beradi.
+ */
+export type DiscountKind = 'promo' | 'campaign' | 'global' | 'personal';
+/** all — hamma; new — hali to'lov qilmaganlar; selected — `discount_targets` dagi biliardxonalar. */
+export type DiscountAudience = 'all' | 'new' | 'selected';
 
 export const discounts = pgTable(
   'discounts',
@@ -156,17 +167,30 @@ export const discounts = pgTable(
     /** Amal qilish oynasi: promo shu oraliqda kiritiladi, kampaniya shu oraliqda ro'yxatdan o'tganlarga beriladi. */
     validFrom: ts('valid_from'),
     validTo: ts('valid_to'),
-    /** Chegirma biriktirilgandan keyin necha oy amal qiladi. null — cheksiz. */
-    benefitMonths: integer('benefit_months'),
+    /** Chegirma biriktirilgandan keyin necha kun amal qiladi. null — cheksiz (global uchun — oyna tugaguncha). */
+    benefitDays: integer('benefit_days'),
+    audience: text('audience').$type<DiscountAudience>().notNull().default('all'),
     maxUses: integer('max_uses'),
     usedCount: integer('used_count').notNull().default(0),
-    /** Faqat hali to'lov qilmagan biliardxonalar uchun. */
-    newOnly: boolean('new_only').notNull().default(false),
     active: boolean('active').notNull().default(true),
     note: text('note'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('discounts_code_idx').on(t.code)],
+);
+
+/** `audience = 'selected'` chegirma qaysi biliardxonalarga tegishli. */
+export const discountTargets = pgTable(
+  'discount_targets',
+  {
+    discountId: integer('discount_id')
+      .notNull()
+      .references(() => discounts.id, { onDelete: 'cascade' }),
+    hallId: uuid('hall_id')
+      .notNull()
+      .references(() => halls.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.discountId, t.hallId] })],
 );
 
 export const hallDiscounts = pgTable(
@@ -204,7 +228,6 @@ export const receipts = pgTable(
     caption: text('caption'),
     status: text('status').$type<ReceiptStatus>().notNull().default('pending'),
     amount: integer('amount'),
-    daysAdded: integer('days_added'),
     /** Tasdiqlash paytidagi oylik narx (chegirma bilan). */
     priceAtReview: integer('price_at_review'),
     rejectReason: text('reject_reason'),
@@ -214,7 +237,7 @@ export const receipts = pgTable(
   (t) => [index('receipts_status_idx').on(t.status, t.createdAt)],
 );
 
-export type SubscriptionEventKind = 'trial' | 'payment' | 'extend' | 'set' | 'discount';
+export type SubscriptionEventKind = 'trial' | 'trial_extend' | 'payment' | 'charge' | 'adjust' | 'discount';
 
 export const subscriptionEvents = pgTable(
   'subscription_events',
@@ -229,6 +252,8 @@ export const subscriptionEvents = pgTable(
     fromDate: ts('from_date'),
     toDate: ts('to_date'),
     receiptId: integer('receipt_id').references(() => receipts.id),
+    /** Amaldan keyingi balans. */
+    balanceAfter: integer('balance_after'),
     note: text('note'),
     createdAt: createdAt(),
   },

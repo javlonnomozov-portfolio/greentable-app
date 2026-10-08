@@ -4,7 +4,8 @@ import { z } from 'zod';
 import type { ApiError, AuthPollResponse, AuthStartResponse, InviteResponse, MeResponse, PushResponse } from '../contract.ts';
 import type { AppDeps } from '../app.ts';
 import { authenticate, pollLogin, startLogin, type DeviceAuth } from '../services/auth.ts';
-import { hallBilling, toSubscriptionInfo } from '../services/billing.ts';
+import { chargeHall, hallBilling, toSubscriptionInfo } from '../services/billing.ts';
+import { getHall } from '../services/halls.ts';
 import { activeDevices, createInvite, deviceLimit, revokeDevice } from '../services/halls.ts';
 import { EpochMismatch, MAX_PULL, MAX_PUSH, SYNC_TABLES, pullChanges, pushChanges, resetHallData } from '../services/sync.ts';
 import { displayName } from '../services/users.ts';
@@ -38,7 +39,10 @@ async function readJson<T extends z.ZodType>(c: Context, schema: T): Promise<z.i
 
 export async function buildMe(deps: AppDeps, auth: DeviceAuth): Promise<MeResponse> {
   const now = deps.now();
-  const billing = await hallBilling(deps.db, auth.hall, now);
+  // Soatlik job kutilmasin: vaqti kelgan kunlar shu yerda yechiladi, holat har doim aniq.
+  await chargeHall(deps.db, auth.hall.id, now);
+  const hall = (await getHall(deps.db, auth.hall.id)) ?? auth.hall;
+  const billing = await hallBilling(deps.db, hall, now);
   const devices = await activeDevices(deps.db, auth.hall.id);
   return {
     serverTime: now.getTime(),

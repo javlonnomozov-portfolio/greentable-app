@@ -31,7 +31,7 @@ export function Dashboard() {
       <Card withBorder>
         <Text size="sm" c="dimmed">Shu oy tushumi</Text>
         <Text size="xl" fw={700}>{som(data.monthRevenue)}</Text>
-        <Text size="sm" c="dimmed">{data.monthPayments} ta to'lov</Text>
+        <Text size="sm" c="dimmed">{data.monthPayments} ta to'lov · mijozlar balansida jami {som(data.totalBalance)}</Text>
       </Card>
       <Title order={4}>Muddati tugayotganlar</Title>
       {data.soon.length === 0 ? (
@@ -43,7 +43,7 @@ export function Dashboard() {
               <Table.Tr>
                 <Table.Th>Biliardxona</Table.Th>
                 <Table.Th>Holat</Table.Th>
-                <Table.Th>Muddat</Table.Th>
+                <Table.Th>Pul yetadi</Table.Th>
                 <Table.Th>Egasi</Table.Th>
               </Table.Tr>
             </Table.Thead>

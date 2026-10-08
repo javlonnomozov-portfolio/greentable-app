@@ -24,10 +24,10 @@ await updatePricing(db, {
   paymentText: 'Karta: 8600 0000 0000 0000\nQabul qiluvchi: Ism Familiya',
   supportText: 'Savollar uchun: @greentable_admin',
 });
-const base = { code: null, percent: null, amount: null, validFrom: null, validTo: null, benefitMonths: null, maxUses: null, newOnly: false, active: true, note: null };
-await createDiscount(db, { ...base, kind: 'campaign', percent: 30, validFrom: ago(40), validTo: ago(20), benefitMonths: 3, note: 'Ochilish aksiyasi' });
-await createDiscount(db, { ...base, kind: 'promo', code: 'YANGI20', percent: 20, benefitMonths: 2, maxUses: 100, note: 'Instagram' });
-await createDiscount(db, { ...base, kind: 'promo', code: 'DO‘ST', amount: 15_000, newOnly: true });
+const base = { code: null, percent: null, amount: null, validFrom: null, validTo: null, benefitDays: null, audience: 'all' as const, maxUses: null, active: true, note: null };
+await createDiscount(db, { ...base, kind: 'campaign', percent: 30, validFrom: ago(40), validTo: ago(20), benefitDays: 90, note: 'Ochilish aksiyasi' });
+await createDiscount(db, { ...base, kind: 'promo', code: 'YANGI20', percent: 20, benefitDays: 60, maxUses: 100, note: 'Instagram' });
+await createDiscount(db, { ...base, kind: 'promo', code: 'DO‘ST', amount: 15_000, audience: 'new' });
 
 const people = [
   ['Sardor', 'Grand Biliard', 30],
@@ -45,7 +45,7 @@ for (const [name, hallName, daysAgo] of people) {
   if (name === 'Anvar') await redeemPromo(db, hall.id, 'YANGI20', ago(20));
   if (name === 'Sardor') {
     const r = await createReceipt(db, { hallId: hall.id, userId: u.id, fileId: 'demo', fileKind: 'photo', mimeType: null, caption: null }, ago(15));
-    await approveReceipt(db, r.id, { amount: 198_000, days: 60 }, ago(15));
+    await approveReceipt(db, r.id, { amount: 198_000 }, ago(15));
   }
   if (name === 'Anvar' || name === 'Dilshod') {
     await createReceipt(db, { hallId: hall.id, userId: u.id, fileId: 'demo', fileKind: 'photo', mimeType: null, caption: name === 'Anvar' ? 'Oktyabr uchun' : null }, ago(0.1));

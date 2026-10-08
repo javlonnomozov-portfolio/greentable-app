@@ -65,30 +65,32 @@ export default function AccountScreen() {
           <Text variant="titleLarge" style={{ color: STATE_COLOR[sub.state], fontWeight: '700' }}>
             {STATE_LABEL[sub.state]}
           </Text>
-          {sub.endsAt ? (
+          <Text variant="headlineSmall" style={[styles.bold, { color: sub.balance < 0 ? palette.danger : palette.income }]}>
+            Balans: {formatSom(sub.balance)}
+          </Text>
+          <Text variant="bodyLarge">
+            Kuniga <Text style={styles.bold}>{formatSom(sub.dailyPrice)}</Text> yechiladi
+            <Text style={styles.muted}> (30 kun — {formatSom(sub.price)})</Text>
+            {sub.discount ? (
+              <Text style={{ color: palette.timer }}>
+                {' '}
+                {sub.discount.label}
+                {sub.discount.endsAt ? `, ${formatDate(sub.discount.endsAt)} gacha` : ''}
+              </Text>
+            ) : null}
+          </Text>
+          {(sub.state === 'trial' || sub.state === 'active') && sub.endsAt ? (
             <Text variant="bodyLarge">
-              {sub.state === 'trial' || sub.state === 'active'
-                ? `${formatDate(sub.endsAt)} gacha · ${sub.daysLeft} kun qoldi`
-                : `Muddat ${formatDate(sub.endsAt)} da tugagan`}
+              Pul taxminan <Text style={styles.bold}>{formatDate(sub.endsAt)}</Text> gacha yetadi ({Math.max(0, sub.daysLeft)} kun)
             </Text>
           ) : null}
           {sub.state === 'grace' && sub.graceEndsAt ? (
             <Text variant="bodyMedium" style={{ color: palette.debt }}>
-              {formatDate(sub.graceEndsAt)} dan keyin ilova faqat ko'rish rejimiga o'tadi.
+              Balans tugadi. {formatDate(sub.graceEndsAt)} gacha to'lov qilinmasa, ilova faqat ko'rish rejimiga o'tadi.
             </Text>
           ) : null}
-          <Text variant="bodyLarge">
-            Oylik narx: <Text style={styles.bold}>{formatSom(sub.price)}</Text>
-            {sub.discount ? (
-              <Text style={{ color: palette.timer }}>
-                {' '}
-                ({sub.discount.label}
-                {sub.discount.endsAt ? `, ${formatDate(sub.discount.endsAt)} gacha` : ''})
-              </Text>
-            ) : null}
-          </Text>
           <Text variant="bodySmall" style={styles.muted}>
-            To'lov chekini Telegram botga yuborasiz — tasdiqlangach muddat avtomatik uzayadi.
+            To'lov chekini Telegram botga yuborasiz — tasdiqlangach summa balansga tushadi.
           </Text>
           <View style={styles.row}>
             <Button mode="contained" icon="credit-card-outline" onPress={() => bot('pay')} style={styles.flex}>
